@@ -96,7 +96,6 @@ export default function Payments() {
         date_from: from,
         date_to: to,
         collection_date: from,
-        amount_per_month: Number(amount),
         amount: Number(amount),
         note,
       };
@@ -177,7 +176,7 @@ export default function Payments() {
                       </div>
                     </div>
                     <div>
-                      <Label>₹ Amount / Month</Label>
+                      <Label>₹ Total Amount</Label>
                       <Input type="number" min="1" value={amount} onChange={e => setAmount(e.target.value)} data-testid="pay-amount" />
                     </div>
                     <div>
@@ -195,9 +194,9 @@ export default function Payments() {
         }
       />
 
-      <div className="card-earth mb-4 p-4">
-        <div className="flex flex-col md:flex-row gap-3 md:items-end">
-          <div className="flex gap-2 items-center flex-1">
+      <div className="p-4 mb-4 card-earth">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end">
+          <div className="flex items-center flex-1 gap-2">
             <MagnifyingGlass size={18} className="text-[color:var(--text-muted)]" />
             <Input
               placeholder="Search by receipt, donor name, contact, collector..."
@@ -207,7 +206,7 @@ export default function Payments() {
               className="flex-1"
             />
           </div>
-          <div className="flex flex-col sm:flex-row gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <div>
               <Label className="text-xs">From</Label>
               <Input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)} data-testid="filter-date-from" />
@@ -217,7 +216,7 @@ export default function Payments() {
               <Input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)} data-testid="filter-date-to" />
             </div>
             {(filterFrom || filterTo) && (
-              <Button type="button" variant="outline" className="rounded-full mt-5" onClick={() => { setFilterFrom(""); setFilterTo(""); }}>Clear dates</Button>
+              <Button type="button" variant="outline" className="mt-5 rounded-full" onClick={() => { setFilterFrom(""); setFilterTo(""); }}>Clear dates</Button>
             )}
           </div>
           {searchQuery && <span className="text-xs text-[color:var(--text-muted)]">Found: {filteredRows.length}</span>}

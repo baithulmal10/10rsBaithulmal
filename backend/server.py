@@ -807,8 +807,8 @@ async def create_payment(data: PaymentIn, user: dict = Depends(get_current_user)
         raise HTTPException(status_code=404, detail="Donor not found")
     date_from, date_to = _resolve_payment_dates(data)
     months = _months_inclusive(date_from, date_to)
-    amount = float(data.amount_per_month or data.amount or 10.0)
-    total = round(amount * months, 2)
+    amount = float(data.amount if data.amount is not None else data.amount_per_month or 10.0)
+    total = round(amount, 2)
     doc = {
         "id": new_id(),
         "receipt_no": build_receipt_number(),
@@ -817,6 +817,7 @@ async def create_payment(data: PaymentIn, user: dict = Depends(get_current_user)
         "date_to": date_to,
         "collection_date": date_from,
         "months": months,
+        "amount": amount,
         "amount_per_month": amount,
         "total_amount": total,
         "note": data.note or "",
