@@ -66,6 +66,7 @@ htmlcov/
 .env
 .env.*
 !.env.example
+!frontend/.env.production
 
 backend/.env
 frontend/.env
@@ -129,6 +130,7 @@ memory/test_credentials.md
 .env
 .env.*
 !.env.example
+!frontend/.env.production
 
 # Python
 __pycache__/
