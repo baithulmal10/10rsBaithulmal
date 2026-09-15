@@ -1,7 +1,7 @@
 import "@/App.css";
 import "@/index.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider, isAccountantAdmin, isCollector, useAuth } from "@/context/AuthContext";
+import { AuthProvider, isAccountantAdmin, useAuth } from "@/context/AuthContext";
 import Layout from "@/components/Layout";
 import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
@@ -29,12 +29,6 @@ function AdminOnly({ children }) {
   return children;
 }
 
-function StaffOnly({ children }) {
-  const { user } = useAuth();
-  if (isCollector(user)) return <Navigate to="/payments" replace />;
-  return children;
-}
-
 export default function App() {
   return (
     <AuthProvider>
@@ -42,19 +36,19 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route element={<Protected><Layout /></Protected>}>
-            <Route path="/" element={<StaffOnly><Dashboard /></StaffOnly>} />
-            <Route path="/donors" element={<StaffOnly><PeopleList kind="donors" title="Donors" subtitle="Those who give — the lifeblood of the community fund." /></StaffOnly>} />
-            <Route path="/beneficiaries" element={<StaffOnly><PeopleList kind="beneficiaries" title="Beneficiaries" subtitle="Those we serve — recipients of Kadan, Sadakah and support." /></StaffOnly>} />
-            <Route path="/workers" element={<StaffOnly><PeopleList kind="workers" title="Workers" subtitle="Team members who help operate the fund." /></StaffOnly>} />
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/donors" element={<PeopleList kind="donors" title="Donors" subtitle="Those who give — the lifeblood of the community fund." />} />
+            <Route path="/beneficiaries" element={<PeopleList kind="beneficiaries" title="Beneficiaries" subtitle="Those we serve — recipients of Kadan, Sadakah and support." />} />
+            <Route path="/workers" element={<PeopleList kind="workers" title="Workers" subtitle="Team members who help operate the fund." />} />
             <Route path="/payments" element={<Payments />} />
-            <Route path="/kadan" element={<StaffOnly><Kadan variant="kadan" /></StaffOnly>} />
-            <Route path="/vattiyilla" element={<StaffOnly><VattiyillaDashboard /></StaffOnly>} />
-            <Route path="/vattiyilla-loans" element={<StaffOnly><Kadan variant="vattiyilla" /></StaffOnly>} />
-            <Route path="/vattiyilla-accounts" element={<StaffOnly><VattiyillaAccounts /></StaffOnly>} />
-            <Route path="/sadakah" element={<StaffOnly><Sadakah /></StaffOnly>} />
-            <Route path="/expenses" element={<StaffOnly><Expenses /></StaffOnly>} />
-            <Route path="/accounts" element={<StaffOnly><Accounts /></StaffOnly>} />
-            <Route path="/reports" element={<StaffOnly><Reports /></StaffOnly>} />
+            <Route path="/kadan" element={<Kadan variant="kadan" />} />
+            <Route path="/vattiyilla" element={<VattiyillaDashboard />} />
+            <Route path="/vattiyilla-loans" element={<Kadan variant="vattiyilla" />} />
+            <Route path="/vattiyilla-accounts" element={<VattiyillaAccounts />} />
+            <Route path="/sadakah" element={<Sadakah />} />
+            <Route path="/expenses" element={<Expenses />} />
+            <Route path="/accounts" element={<Accounts />} />
+            <Route path="/reports" element={<Reports />} />
             <Route path="/admin" element={<AdminOnly><AdminUsers /></AdminOnly>} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

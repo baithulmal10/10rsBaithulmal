@@ -78,6 +78,29 @@ export function generatePdf({ title, subtitle, sections }) {
   return doc;
 }
 
+export function generateReceiptTemplate({ image, receiptNo, donor, paymentDate, dateFrom, dateTo, total }) {
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  doc.addImage(image, "JPEG", 0, 0, pageW, pageH);
+  doc.setFillColor(239, 249, 239);
+  doc.setDrawColor(239, 249, 239);
+  [[115, 270, 440, 25], [115, 317, 440, 25], [115, 363, 440, 25], [115, 410, 440, 25]].forEach(([x, y, w, h]) => doc.rect(x, y, w, h, "F"));
+  doc.setTextColor(...BRAND.moss);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.text(String(receiptNo || "—"), 235, 289);
+  doc.text(String(donor || "—").toUpperCase(), 235, 336);
+  doc.text(String(paymentDate || "—"), 235, 382);
+  doc.text(`${dateFrom || "—"} to ${dateTo || dateFrom || "—"}`, 235, 429);
+  doc.setFillColor(...BRAND.moss);
+  doc.rect(150, 450, 295, 55, "F");
+  doc.setTextColor(253, 251, 247);
+  doc.setFontSize(27);
+  doc.text(`Total : ${inr(total)}`, pageW / 2, 486, { align: "center" });
+  return doc;
+}
+
 export function downloadPdf(doc, filename = "report.pdf") {
   doc.save(filename);
 }

@@ -175,6 +175,10 @@ async def require_staff(user: dict = Depends(get_current_user)) -> dict:
     return user
 
 
+async def require_member(user: dict = Depends(get_current_user)) -> dict:
+    return user
+
+
 async def require_accountant_admin(user: dict = Depends(get_current_user)) -> dict:
     if not is_accountant_admin(user):
         raise HTTPException(status_code=403, detail="Payment approval requires Accountant Admin")
@@ -301,8 +305,12 @@ class PaymentIn(BaseModel):
     date_from: Optional[str] = None  # YYYY-MM-DD
     date_to: Optional[str] = None
     collection_date: Optional[str] = None  # legacy single-day alias
+    collected_date: Optional[str] = None
+    from_month: Optional[str] = None
+    to_month: Optional[str] = None
     amount_per_month: Optional[float] = None
     amount: Optional[float] = None
+    payment_mode: Literal["cash", "online"] = "cash"
     note: Optional[str] = ""
 
     @model_validator(mode="before")
@@ -460,8 +468,6 @@ async def _next_serial(coll: str) -> str:
 async def lookup_person(kind: str, contact: str, user: dict = Depends(get_current_user)):
     if kind not in COLLECTIONS:
         raise HTTPException(status_code=404, detail="Unknown kind")
-    if is_collector(user) and kind != "donors":
-        raise HTTPException(status_code=403, detail="Payment Collectors may look up donors only")
     key = contact.strip()
     if not key:
         return {"exists": False, "record": None}
@@ -478,7 +484,7 @@ async def lookup_person(kind: str, contact: str, user: dict = Depends(get_curren
 
 
 @api.get("/people/{kind}/search")
-async def search_people(kind: str, q: Optional[str] = None, place: Optional[str] = None, user: dict = Depends(require_staff)):
+async def search_people(kind: str, q: Optional[str] = None, place: Optional[str] = None, user: dict = Depends(require_member)):
     if kind not in COLLECTIONS:
         raise HTTPException(status_code=404, detail="Unknown kind")
     query = {}
@@ -500,7 +506,7 @@ async def search_people(kind: str, q: Optional[str] = None, place: Optional[str]
 
 
 @api.get("/people/{kind}")
-async def list_people(kind: str, user: dict = Depends(require_staff)):
+async def list_people(kind: str, user: dict = Depends(require_member)):
     if kind not in COLLECTIONS:
         raise HTTPException(status_code=404, detail="Unknown kind")
     docs = await db[kind].find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
@@ -544,7 +550,7 @@ async def create_person(kind: str, data: PersonBase, user: dict = Depends(requir
 
 
 @api.get("/people/{kind}/{pid}")
-async def get_person(kind: str, pid: str, user: dict = Depends(require_staff)):
+async def get_person(kind: str, pid: str, user: dict = Depends(require_member)):
     if kind not in COLLECTIONS:
         raise HTTPException(status_code=404, detail="Unknown kind")
     doc = await db[kind].find_one({"id": pid}, {"_id": 0})
@@ -594,7 +600,7 @@ def _compute_loan_status(loan: dict) -> dict:
 
 
 @api.get("/loans")
-async def list_loans(kadan_type: Optional[str] = None, user: dict = Depends(require_staff)):
+async def list_loans(kadan_type: Optional[str] = None, user: dict = Depends(require_member)):
     q = {}
     if kadan_type:
         q["kadan_type"] = kadan_type
@@ -636,7 +642,7 @@ async def create_loan(data: KadanIn, user: dict = Depends(require_staff)):
 
 
 @api.get("/loans/{lid}")
-async def get_loan(lid: str, user: dict = Depends(require_staff)):
+async def get_loan(lid: str, user: dict = Depends(require_member)):
     doc = await db.loans.find_one({"id": lid}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
@@ -710,7 +716,7 @@ async def unblock_loan(lid: str, admin: dict = Depends(require_staff)):
 
 # ---------------- Sadakah ----------------
 @api.get("/sadakah")
-async def list_sadakah(user: dict = Depends(require_staff)):
+async def list_sadakah(user: dict = Depends(require_member)):
     return await db.sadakah.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
 
 
@@ -779,6 +785,7 @@ def _payment_overlap_query(start: str, end_inclusive: str) -> dict:
 async def list_payments(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    collector_id: Optional[str] = None,
     limit: int = 400,
     user: dict = Depends(get_current_user),
 ):
@@ -791,6 +798,8 @@ async def list_payments(
         query["collected_by"] = user["id"]
     elif not is_staff(user):
         raise HTTPException(status_code=403, detail="Staff access required")
+    if collector_id and is_staff(user):
+        query["collected_by"] = collector_id
     cap = max(1, min(int(limit or 400), 2000))
     return await db.payments.find(query, {"_id": 0}).sort("created_at", -1).to_list(cap)
 
@@ -798,6 +807,15 @@ async def list_payments(
 @api.get("/payments/pending")
 async def list_pending_payments(admin: dict = Depends(require_accountant_admin)):
     return await db.payments.find({"status": "pending"}, {"_id": 0}).sort("created_at", -1).to_list(5000)
+
+
+@api.get("/payments/collectors")
+async def list_payment_collectors(user: dict = Depends(require_member)):
+    rows = await db.payments.aggregate([
+        {"$group": {"_id": "$collected_by", "name": {"$first": "$collected_by_name"}, "total": {"$sum": "$total_amount"}}},
+        {"$sort": {"name": 1}},
+    ]).to_list(5000)
+    return [{"id": row["_id"], "name": row.get("name", ""), "total": row.get("total", 0)} for row in rows if row.get("_id")]
 
 
 @api.post("/payments")
@@ -816,14 +834,21 @@ async def create_payment(data: PaymentIn, user: dict = Depends(get_current_user)
         "date_from": date_from,
         "date_to": date_to,
         "collection_date": date_from,
+        "collected_date": data.collected_date or data.collection_date or today_ymd(),
+        "from_month": data.from_month or date_from[:7],
+        "to_month": data.to_month or date_to[:7],
         "months": months,
         "amount": amount,
         "amount_per_month": amount,
         "total_amount": total,
+        "payment_mode": data.payment_mode,
         "note": data.note or "",
         "status": "pending",
         "collected_by": user["id"],
         "collected_by_name": user.get("name", ""),
+        "added_by": user["id"],
+        "added_by_name": user.get("name", ""),
+        "payment_added_at": now_iso(),
         "created_at": now_iso(),
         "approved_at": None,
         "approved_by": None,
@@ -859,7 +884,7 @@ async def approve_payment(pid: str, data: ApprovalActionIn, user: dict = Depends
 
 # ---------------- Expenses ----------------
 @api.get("/expenses")
-async def list_expenses(user: dict = Depends(require_staff)):
+async def list_expenses(user: dict = Depends(require_member)):
     return await db.expenses.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
 
 
@@ -888,7 +913,7 @@ async def create_expense(data: ExpenseIn, user: dict = Depends(require_staff)):
 
 # ---------------- Accounts / Dashboard ----------------
 @api.get("/accounts/summary")
-async def accounts_summary(fund: str = "baithulmal", user: dict = Depends(require_staff)):
+async def accounts_summary(fund: str = "baithulmal", user: dict = Depends(require_member)):
     """fund: 'baithulmal' (main) or 'vattiyilla' (interest-free)."""
     is_vatti = fund == "vattiyilla"
     loan_type_filter = "vattiyilla" if is_vatti else "kadan"
@@ -981,7 +1006,7 @@ async def accounts_summary(fund: str = "baithulmal", user: dict = Depends(requir
 
 
 @api.get("/accounts/user-outstanding")
-async def user_outstanding(admin: dict = Depends(require_staff)):
+async def user_outstanding(admin: dict = Depends(require_member)):
     """List collectors and their pending (outstanding) payment totals."""
     pipeline = [
         {"$match": {"status": "pending"}},
@@ -999,7 +1024,7 @@ async def user_outstanding(admin: dict = Depends(require_staff)):
 # ---------------- Reports ----------------
 @api.get("/reports")
 async def report(range: str = "daily", start: Optional[str] = None, end: Optional[str] = None,
-                 donor_id: Optional[str] = None, user: dict = Depends(require_staff)):
+                 donor_id: Optional[str] = None, user: dict = Depends(require_member)):
     """range: daily|monthly|yearly|custom|individual"""
     now = datetime.now(timezone.utc)
     if range == "daily":

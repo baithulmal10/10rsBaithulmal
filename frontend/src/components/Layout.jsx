@@ -11,23 +11,23 @@ import {
 
 const nav = [
   // 10Rs Baithulmal (main fund)
-  { to: "/", icon: House, label: "Dashboard", testid: "nav-dashboard", end: true, group: "Baithulmal", staffOnly: true },
-  { to: "/donors", icon: HandHeart, label: "Donors", testid: "nav-donors", group: "Baithulmal", staffOnly: true },
-  { to: "/beneficiaries", icon: UsersThree, label: "Beneficiaries", testid: "nav-beneficiaries", group: "Baithulmal", staffOnly: true },
+  { to: "/", icon: House, label: "Dashboard", testid: "nav-dashboard", end: true, group: "Baithulmal" },
+  { to: "/donors", icon: HandHeart, label: "Donors", testid: "nav-donors", group: "Baithulmal" },
+  { to: "/beneficiaries", icon: UsersThree, label: "Beneficiaries", testid: "nav-beneficiaries", group: "Baithulmal" },
   { to: "/payments", icon: Coins, label: "Payments", testid: "nav-payments", group: "Baithulmal" },
-  { to: "/kadan", icon: HandCoins, label: "Kadan (Loan)", testid: "nav-kadan", group: "Baithulmal", staffOnly: true },
-  { to: "/sadakah", icon: HandHeart, label: "Sadakah", testid: "nav-sadakah", group: "Baithulmal", staffOnly: true },
-  { to: "/accounts", icon: Bank, label: "Accounts", testid: "nav-accounts", group: "Baithulmal", staffOnly: true },
+  { to: "/kadan", icon: HandCoins, label: "Kadan (Loan)", testid: "nav-kadan", group: "Baithulmal" },
+  { to: "/sadakah", icon: HandHeart, label: "Sadakah", testid: "nav-sadakah", group: "Baithulmal" },
+  { to: "/accounts", icon: Bank, label: "Accounts", testid: "nav-accounts", group: "Baithulmal" },
 
   // Vattiyilla Kadan (separate fund)
-  { to: "/vattiyilla", icon: HandCoins, label: "V-Dashboard", testid: "nav-v-dashboard", group: "Vattiyilla", staffOnly: true },
-  { to: "/vattiyilla-loans", icon: HandCoins, label: "V-Loans", testid: "nav-vattiyilla", group: "Vattiyilla", staffOnly: true },
-  { to: "/vattiyilla-accounts", icon: Bank, label: "V-Accounts", testid: "nav-v-accounts", group: "Vattiyilla", staffOnly: true },
+  { to: "/vattiyilla", icon: HandCoins, label: "V-Dashboard", testid: "nav-v-dashboard", group: "Vattiyilla" },
+  { to: "/vattiyilla-loans", icon: HandCoins, label: "V-Loans", testid: "nav-vattiyilla", group: "Vattiyilla" },
+  { to: "/vattiyilla-accounts", icon: Bank, label: "V-Accounts", testid: "nav-v-accounts", group: "Vattiyilla" },
 
   // Shared
-  { to: "/workers", icon: Users, label: "Workers", testid: "nav-workers", group: "Shared", staffOnly: true },
-  { to: "/expenses", icon: Receipt, label: "Expenses", testid: "nav-expenses", group: "Shared", staffOnly: true },
-  { to: "/reports", icon: ChartBar, label: "Reports", testid: "nav-reports", group: "Shared", staffOnly: true },
+  { to: "/workers", icon: Users, label: "Workers", testid: "nav-workers", group: "Shared" },
+  { to: "/expenses", icon: Receipt, label: "Expenses", testid: "nav-expenses", group: "Shared" },
+  { to: "/reports", icon: ChartBar, label: "Reports", testid: "nav-reports", group: "Shared" },
   { to: "/admin", icon: GearSix, label: "Admin", testid: "nav-admin", adminOnly: true, group: "Shared" },
 ];
 
@@ -50,7 +50,7 @@ function SidebarContent({ user, logout, onNavigate }) {
         {["Baithulmal", "Vattiyilla", "Shared"].map(group => {
           const items = nav.filter(n => n.group === group
             && (!n.adminOnly || isAccountantAdmin(user))
-            && (!n.staffOnly || !isCollector(user)));
+            );
           if (items.length === 0) return null;
           return (
             <div key={group} className="mb-4">
@@ -96,16 +96,6 @@ function SidebarContent({ user, logout, onNavigate }) {
 
 function BottomNav({ location, user }) {
   const path = location.pathname;
-  if (isCollector(user)) {
-    return (
-      <div className="bottom-nav lg:hidden" data-testid="mobile-bottom-nav">
-        <NavLink to="/payments" className={path.startsWith("/payments") ? "active" : ""} data-testid="bn-payments">
-          <Coins size={22} weight={path.startsWith("/payments") ? "fill" : "regular"} className="bn-icon" />
-          <span>Collections</span>
-        </NavLink>
-      </div>
-    );
-  }
   const isHome = path === "/";
   const isDir = DIRECTORY_ROUTES.some(r => path.startsWith(r));
   const isLed = LEDGER_ROUTES.some(r => path.startsWith(r));
