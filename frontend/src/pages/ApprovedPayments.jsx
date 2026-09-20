@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, inr } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import { Label } from "@/components/ui/label";
@@ -26,7 +26,7 @@ export default function ApprovedPayments() {
   const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     const range = period === "custom" ? { date_from: dateFrom, date_to: dateTo } : rangeFor(period);
     const params = { ...range };
@@ -39,9 +39,9 @@ export default function ApprovedPayments() {
       setRows(Array.isArray(payments.data) ? payments.data : []);
       setCollectors(Array.isArray(users.data) ? users.data : []);
     } finally { setLoading(false); }
-  };
+  }, [collectorId, dateFrom, dateTo, period]);
 
-  useEffect(() => { load(); }, [period, collectorId, dateFrom, dateTo]);
+  useEffect(() => { load(); }, [load]);
 
   const total = rows.reduce((sum, row) => sum + Number(row.total_amount || 0), 0);
 
