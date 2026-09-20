@@ -188,7 +188,7 @@ export default function Payments() {
   return (
     <div data-testid="payments-page">
       <PageHeader
-        title={isCollector(user) ? "My Collections" : "Payment Collection"}
+        title={isCollector(user) ? "Payment Collection" : "Payment Collection"}
         subtitle={isCollector(user)
           ? "Record collections and review only your own history."
           : "Record donations against a date range; they stay pending until approval."}

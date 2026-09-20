@@ -39,7 +39,7 @@ const LEDGER_ROUTES = ["/payments", "/kadan", "/vattiyilla", "/vattiyilla-loans"
 function SidebarContent({ user, logout, onNavigate }) {
   return (
     <>
-      <div className="px-6 pt-8 pb-6 flex items-center gap-3">
+      <div className="flex items-center gap-3 px-6 pt-8 pb-6">
         <div className="coin-badge" aria-hidden>10₹</div>
         <div>
           <div className="text-[19px] leading-none font-bold text-moss">Baithulmal</div>
@@ -47,7 +47,7 @@ function SidebarContent({ user, logout, onNavigate }) {
         </div>
       </div>
 
-      <nav className="px-3 flex-1 overflow-y-auto pb-6">
+      <nav className="flex-1 px-3 pb-6 overflow-y-auto">
         {["Baithulmal", "Vattiyilla", "Shared"].map(group => {
           const items = nav.filter(n => n.group === group
             && (!n.adminOnly || isAccountantAdmin(user))
@@ -70,7 +70,7 @@ function SidebarContent({ user, logout, onNavigate }) {
                     data-testid={n.testid}
                   >
                     <Icon size={18} weight="duotone" />
-                    <span>{n.to === "/payments" && isCollector(user) ? "My Collections" : n.label}</span>
+                    <span>{n.to === "/payments" && isCollector(user) ? "Payments" : n.label}</span>
                   </NavLink>
                 );
               })}
@@ -79,14 +79,14 @@ function SidebarContent({ user, logout, onNavigate }) {
         })}
       </nav>
 
-      <div className="px-4 pb-6 border-t border-earth pt-4 mx-3">
+      <div className="px-4 pt-4 pb-6 mx-3 border-t border-earth">
         <div className="text-xs text-[color:var(--text-muted)] uppercase tracking-wider">Signed in as</div>
         <div className="mt-1 font-medium text-[color:var(--text-primary)]">{user?.name}</div>
         <div className="text-xs text-[color:var(--text-secondary)]">{roleLabel(user?.role)}</div>
         <button
           onClick={logout}
           data-testid="logout-btn"
-          className="mt-3 w-full flex items-center justify-center gap-2 text-sm px-3 py-2 rounded-full border border-earth hover:bg-white transition-colors"
+          className="flex items-center justify-center w-full gap-2 px-3 py-2 mt-3 text-sm transition-colors border rounded-full border-earth hover:bg-white"
         >
           <SignOut size={16} weight="duotone" /> Logout
         </button>
@@ -131,7 +131,7 @@ export default function Layout() {
   const currentLabel = nav.find(n => (n.end ? location.pathname === n.to : location.pathname.startsWith(n.to)))?.label || "Baithulmal";
 
   return (
-    <div className="min-h-screen flex bg-app" data-testid="app-shell">
+    <div className="flex min-h-screen bg-app" data-testid="app-shell">
       {/* Desktop sidebar */}
       <aside
         className="hidden lg:flex w-[260px] shrink-0 bg-white border-r border-earth flex-col"
@@ -140,20 +140,20 @@ export default function Layout() {
         <SidebarContent user={user} logout={logout} />
       </aside>
 
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div className="flex flex-col flex-1 min-w-0">
         {/* Mobile top bar */}
-        <header className="lg:hidden sticky top-0 z-30 bg-white border-b border-earth px-4 py-3 flex items-center justify-between" data-testid="mobile-header">
+        <header className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 bg-white border-b lg:hidden border-earth" data-testid="mobile-header">
           <div className="flex items-center gap-3">
             <div className="coin-badge-sm" aria-hidden>10₹</div>
             <div>
-              <div className="text-base leading-none font-bold text-moss">Baithulmal</div>
+              <div className="text-base font-bold leading-none text-moss">Baithulmal</div>
               <div className="text-[10px] tracking-[0.2em] uppercase text-[color:var(--text-muted)] mt-1">{currentLabel}</div>
             </div>
           </div>
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
               <button
-                className="w-10 h-10 rounded-full border border-earth bg-white flex items-center justify-center"
+                className="flex items-center justify-center w-10 h-10 bg-white border rounded-full border-earth"
                 data-testid="mobile-menu-btn"
                 aria-label="Open menu"
               >
@@ -166,7 +166,7 @@ export default function Layout() {
           </Sheet>
         </header>
 
-        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8" data-testid="main-content">
+        <main className="flex-1 min-w-0 p-4 pb-24 sm:p-6 lg:p-8 lg:pb-8" data-testid="main-content">
           <Outlet />
         </main>
       </div>
