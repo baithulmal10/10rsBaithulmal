@@ -819,7 +819,7 @@ async def list_pending_payments(admin: dict = Depends(require_accountant_admin))
 async def list_approved_payments(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
-    collector_id: Optional[str] = None,
+    donor_id: Optional[str] = None,
     user: dict = Depends(require_member),
 ):
     query = {"status": "approved"}
@@ -827,9 +827,19 @@ async def list_approved_payments(
         start = _parse_ymd(date_from, "date_from") if date_from else "0000-01-01"
         end = _parse_ymd(date_to, "date_to") if date_to else "9999-12-31"
         query["collected_date"] = {"$gte": start, "$lte": end}
-    if collector_id:
-        query["collected_by"] = collector_id
+    if donor_id:
+        query["donor.id"] = donor_id
     return await db.payments.find(query, {"_id": 0}).sort("collected_date", -1).to_list(5000)
+
+
+@api.get("/payments/approved/donors")
+async def list_approved_payment_donors(user: dict = Depends(require_member)):
+    rows = await db.payments.aggregate([
+        {"$match": {"status": "approved"}},
+        {"$group": {"_id": "$donor.id", "name": {"$first": "$donor.name"}, "serial": {"$first": "$donor.serial"}}},
+        {"$sort": {"name": 1}},
+    ]).to_list(5000)
+    return [{"id": row["_id"], "name": row.get("name", ""), "serial": row.get("serial", "")} for row in rows if row.get("_id")]
 
 
 @api.get("/payments/collectors")

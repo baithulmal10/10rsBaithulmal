@@ -56,7 +56,7 @@ export default function Payments() {
   };
 
   useEffect(() => {
-    api.get("/payments/collectors").then(r => setCollectors(Array.isArray(r.data) ? r.data : [])).catch(() => {});
+    api.get("/payments/collectors", { params: { status: "pending" } }).then(r => setCollectors(Array.isArray(r.data) ? r.data : [])).catch(() => {});
   }, []);
 
   useEffect(() => {
