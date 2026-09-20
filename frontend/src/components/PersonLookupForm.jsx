@@ -7,6 +7,11 @@ import { toast } from "sonner";
 import { MagnifyingGlass, CheckCircle } from "@phosphor-icons/react";
 
 const singularKind = { donors: "donor", beneficiaries: "beneficiary", workers: "worker" };
+const countryCodes = [
+  ["+91", "India"], ["+1", "United States / Canada"], ["+44", "United Kingdom"],
+  ["+61", "Australia"], ["+971", "UAE"], ["+974", "Qatar"], ["+966", "Saudi Arabia"],
+  ["+94", "Sri Lanka"], ["+60", "Malaysia"], ["+65", "Singapore"], ["+49", "Germany"],
+];
 
 /**
  * PersonLookupForm
@@ -15,6 +20,7 @@ const singularKind = { donors: "donor", beneficiaries: "beneficiary", workers: "
  */
 export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, allowCreate = true }) {
   const [contact, setContact] = useState("");
+  const [countryCode, setCountryCode] = useState("+91");
   const [checking, setChecking] = useState(false);
   const [found, setFound] = useState(null); // record if exists
   const [showForm, setShowForm] = useState(false);
@@ -26,8 +32,8 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
   const noun = singularKind[kind] || kind;
 
   const validateContact = (val) => {
-    if (!/^\d{10}$/.test(val.replace(/\D/g, ''))) {
-      return "Phone number must be 10 digits";
+    if (!/^\d{6,15}$/.test(val.replace(/\D/g, ""))) {
+      return "Enter a valid phone number";
     }
     return "";
   };
@@ -40,12 +46,13 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
   };
 
   const doLookup = async () => {
-    const err = validateContact(contact);
+    const search = contact.trim();
+    const err = search && /^\d/.test(search) ? validateContact(search) : "";
     if (err) { setContactError(err); toast.error(err); return; }
     setContactError("");
     setChecking(true); setFound(null); setShowForm(false);
     try {
-      const { data } = await api.get(`/people/${kind}/lookup`, { params: { contact: contact.trim() } });
+      const { data } = await api.get(`/people/${kind}/lookup`, { params: { contact: search } });
       if (data.exists) {
         setFound(data.record);
         if (hideOnFound) onSaved?.(data.record);
@@ -69,7 +76,8 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
     }
     setSaving(true);
     try {
-      const { data } = await api.post(`/people/${kind}`, { ...form, contact: contact.trim() });
+      const storedContact = kind === "donors" ? `${countryCode}${contact.replace(/\D/g, "")}` : contact.trim();
+      const { data } = await api.post(`/people/${kind}`, { ...form, contact: storedContact });
       toast.success(`${noun} registered - ID: ${data.serial}`);
       console.log("✅ Registered:", data);
       setFound(data);
@@ -81,32 +89,32 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
   };
 
   const reset = () => {
-    setContact(""); setFound(null); setShowForm(false);
+    setContact(""); setCountryCode("+91"); setFound(null); setShowForm(false);
     setForm({ name: "", father_name: "", address: "", area: "", reference: "", aadhar_number: "" });
   };
 
   return (
     <div className="space-y-4" data-testid={`lookup-${kind}`}>
-      <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
         <div className="flex-1">
-          <Label>Contact Number <span className="text-red-500">*</span> (10 digits)</Label>
-          <Input
-            data-testid="lookup-contact"
-            value={contact}
-            onChange={e => setContact(e.target.value)}
-            placeholder="e.g. 9876543210"
-            pattern="\d{10}"
-            maxLength="10"
-            onKeyDown={e => e.key === "Enter" && doLookup()}
-            className={contactError ? "border-red-500" : ""}
-          />
-          {contactError && <div className="text-xs text-red-500 mt-1">{contactError}</div>}
+          <Label>{kind === "donors" ? "Find Donor by Contact Number, Name, or Father's Name" : "Contact Number"} <span className="text-red-500">*</span></Label>
+          <div className="flex gap-2">
+            <Input
+              data-testid="lookup-contact"
+              value={contact}
+              onChange={e => setContact(e.target.value)}
+              placeholder={kind === "donors" ? "Phone, name, or father's name" : "Enter contact number"}
+              onKeyDown={e => e.key === "Enter" && doLookup()}
+              className={contactError ? "border-red-500" : ""}
+            />
+          </div>
+          {contactError && <div className="mt-1 text-xs text-red-500">{contactError}</div>}
         </div>
         <div className="flex gap-2">
           <Button
             type="button" onClick={doLookup} disabled={checking}
             data-testid="lookup-btn"
-            className="btn-primary-moss rounded-full px-5 flex-1 sm:flex-none"
+            className="flex-1 px-5 rounded-full btn-primary-moss sm:flex-none"
           >
             <MagnifyingGlass size={16} weight="bold" className="mr-2" /> {checking ? "Checking…" : "Lookup"}
           </Button>
@@ -117,7 +125,7 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
       </div>
 
       {found && (
-        <div className="card-earth p-5 space-y-3" data-testid="lookup-found">
+        <div className="p-5 space-y-3 card-earth" data-testid="lookup-found">
           <div className="flex items-start gap-4">
             <div className="coin-badge shrink-0">{found.serial?.charAt(0) || "•"}</div>
             <div className="flex-1">
@@ -131,7 +139,7 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
               </div>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3 text-sm border-t pt-3">
+          <div className="grid grid-cols-2 gap-3 pt-3 text-sm border-t">
             <div><span className="font-medium">Address:</span> {found.address}</div>
             <div><span className="font-medium">Area:</span> {found.area || "—"}</div>
             <div><span className="font-medium">Reference:</span> {found.reference || "—"}</div>
@@ -142,9 +150,9 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
       )}
 
       {showForm && (
-        <form onSubmit={doSave} className="card-earth p-6 space-y-4" data-testid="lookup-new-form">
-            <div className="text-sm uppercase tracking-widest text-copper font-medium">New {noun} Registration</div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <form onSubmit={doSave} className="p-6 space-y-4 card-earth" data-testid="lookup-new-form">
+            <div className="text-sm font-medium tracking-widest uppercase text-copper">New {noun} Registration</div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <Label>Name <span className="text-red-500">*</span></Label>
               <Input required data-testid="new-name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
@@ -166,12 +174,18 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
               <Input data-testid="new-reference" value={form.reference} onChange={e => setForm({ ...form, reference: e.target.value })} />
             </div>
             <div>
-              <Label>Aadhar Card <span className="text-red-500">*</span> (12 digits)</Label>
-              <Input required data-testid="new-aadhar" value={form.aadhar_number} onChange={e => { setForm({ ...form, aadhar_number: e.target.value }); setAadharError(validateAadhar(e.target.value)); }} placeholder="e.g. 123456789012" maxLength="12" className={aadharError ? "border-red-500" : ""} />
-              {aadharError && <div className="text-xs text-red-500 mt-1">{aadharError}</div>}
+              <Label>Aadhar Card (optional, 12 digits)</Label>
+              <Input data-testid="new-aadhar" value={form.aadhar_number} onChange={e => { setForm({ ...form, aadhar_number: e.target.value }); setAadharError(validateAadhar(e.target.value)); }} placeholder="e.g. 123456789012" maxLength="12" className={aadharError ? "border-red-500" : ""} />
+              {aadharError && <div className="mt-1 text-xs text-red-500">{aadharError}</div>}
             </div>
+            {kind === "donors" && <div>
+              <Label>Country Code</Label>
+              <select value={countryCode} onChange={e => setCountryCode(e.target.value)} className="flex w-full h-10 px-3 text-sm bg-white border rounded-md border-earth" aria-label="Country code">
+                {countryCodes.map(([code, country]) => <option value={code} key={code}>{code} {country}</option>)}
+              </select>
+            </div>}
           </div>
-          <Button disabled={saving} className="btn-accent-copper rounded-full" data-testid="new-save-btn">
+          <Button disabled={saving} className="rounded-full btn-accent-copper" data-testid="new-save-btn">
             {saving ? "Saving…" : `Register ${noun}`}
           </Button>
         </form>

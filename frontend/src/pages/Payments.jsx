@@ -112,6 +112,7 @@ export default function Payments() {
     if (filterFrom) params.date_from = filterFrom;
     if (filterTo) params.date_to = filterTo;
     if (collectorId) params.collector_id = collectorId;
+    params.status = "pending";
     try {
       const r = await api.get("/payments", { params });
       const nextRows = Array.isArray(r.data) ? r.data : [];

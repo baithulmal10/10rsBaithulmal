@@ -11,7 +11,7 @@ import { Eye, EyeSlash } from "@phosphor-icons/react";
 export default function Login() {
   const { user, login } = useAuth();
   const nav = useNavigate();
-  const [email, setEmail] = useState("Auto@baithulal.com");
+  const [email, setEmail] = useState("Auto@baithulmal.com");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);

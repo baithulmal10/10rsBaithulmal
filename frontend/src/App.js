@@ -7,6 +7,7 @@ import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import PeopleList from "@/pages/PeopleList";
 import Payments from "@/pages/Payments";
+import ApprovedPayments from "@/pages/ApprovedPayments";
 import Kadan from "@/pages/Kadan";
 import Sadakah from "@/pages/Sadakah";
 import Expenses from "@/pages/Expenses";
@@ -41,6 +42,7 @@ export default function App() {
             <Route path="/beneficiaries" element={<PeopleList kind="beneficiaries" title="Beneficiaries" subtitle="Those we serve — recipients of Kadan, Sadakah and support." />} />
             <Route path="/workers" element={<PeopleList kind="workers" title="Workers" subtitle="Team members who help operate the fund." />} />
             <Route path="/payments" element={<Payments />} />
+            <Route path="/payments/approved" element={<ApprovedPayments />} />
             <Route path="/kadan" element={<Kadan variant="kadan" />} />
             <Route path="/vattiyilla" element={<VattiyillaDashboard />} />
             <Route path="/vattiyilla-loans" element={<Kadan variant="vattiyilla" />} />

@@ -5,6 +5,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 import os
+import re
 import uuid
 import logging
 import asyncio
@@ -471,7 +472,11 @@ async def lookup_person(kind: str, contact: str, user: dict = Depends(get_curren
     key = contact.strip()
     if not key:
         return {"exists": False, "record": None}
-    doc = await db[kind].find_one({"contact": key}, {"_id": 0})
+    digits = re.sub(r"\D", "", key)
+    contact_query = {"contact": key}
+    if digits:
+        contact_query = {"$or": [{"contact": key}, {"contact": {"$regex": f"{digits}$"}}]}
+    doc = await db[kind].find_one(contact_query, {"_id": 0})
     if doc:
         return {"exists": True, "record": doc}
     query = {"$or": [
@@ -514,9 +519,11 @@ async def list_people(kind: str, user: dict = Depends(require_member)):
 
 
 @api.post("/people/{kind}")
-async def create_person(kind: str, data: PersonBase, user: dict = Depends(require_staff)):
+async def create_person(kind: str, data: PersonBase, user: dict = Depends(require_member)):
     if kind not in COLLECTIONS:
         raise HTTPException(status_code=404, detail="Unknown kind")
+    if kind != "donors" and not is_staff(user):
+        raise HTTPException(status_code=403, detail="Staff access required")
     contact = data.contact.strip()
     name = data.name.strip()
     father = data.father_name.strip()
@@ -786,19 +793,18 @@ async def list_payments(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     collector_id: Optional[str] = None,
+    status: Optional[str] = None,
     limit: int = 400,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_member),
 ):
     query = {}
+    if status:
+        query["status"] = status
     if date_from or date_to:
         start = _parse_ymd(date_from, "date_from") if date_from else "0000-01-01"
         end = _parse_ymd(date_to, "date_to") if date_to else "9999-12-31"
         query.update(_payment_overlap_query(start, end))
-    if is_collector(user):
-        query["collected_by"] = user["id"]
-    elif not is_staff(user):
-        raise HTTPException(status_code=403, detail="Staff access required")
-    if collector_id and is_staff(user):
+    if collector_id:
         query["collected_by"] = collector_id
     cap = max(1, min(int(limit or 400), 2000))
     return await db.payments.find(query, {"_id": 0}).sort("created_at", -1).to_list(cap)
@@ -809,9 +815,27 @@ async def list_pending_payments(admin: dict = Depends(require_accountant_admin))
     return await db.payments.find({"status": "pending"}, {"_id": 0}).sort("created_at", -1).to_list(5000)
 
 
+@api.get("/payments/approved")
+async def list_approved_payments(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    collector_id: Optional[str] = None,
+    user: dict = Depends(require_member),
+):
+    query = {"status": "approved"}
+    if date_from or date_to:
+        start = _parse_ymd(date_from, "date_from") if date_from else "0000-01-01"
+        end = _parse_ymd(date_to, "date_to") if date_to else "9999-12-31"
+        query["collected_date"] = {"$gte": start, "$lte": end}
+    if collector_id:
+        query["collected_by"] = collector_id
+    return await db.payments.find(query, {"_id": 0}).sort("collected_date", -1).to_list(5000)
+
+
 @api.get("/payments/collectors")
-async def list_payment_collectors(user: dict = Depends(require_member)):
+async def list_payment_collectors(status: str = "approved", user: dict = Depends(require_member)):
     rows = await db.payments.aggregate([
+        {"$match": {"status": status}},
         {"$group": {"_id": "$collected_by", "name": {"$first": "$collected_by_name"}, "total": {"$sum": "$total_amount"}}},
         {"$sort": {"name": 1}},
     ]).to_list(5000)
