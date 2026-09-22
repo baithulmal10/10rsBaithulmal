@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, formatDetail } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +18,7 @@ const countryCodes = [
  * kind: 'donors' | 'beneficiaries' | 'workers'
  * onSaved(person)
  */
-export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, allowCreate = true }) {
+export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, allowCreate = true, searchMode = false }) {
   const [contact, setContact] = useState("");
   const [countryCode, setCountryCode] = useState("+91");
   const [checking, setChecking] = useState(false);
@@ -28,8 +28,32 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
   const [saving, setSaving] = useState(false);
   const [contactError, setContactError] = useState("");
   const [aadharError, setAadharError] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [searching, setSearching] = useState(false);
 
   const noun = singularKind[kind] || kind;
+
+  useEffect(() => {
+    if (!searchMode) return undefined;
+    const query = contact.trim();
+    if (query.length < 2) {
+      setSuggestions([]);
+      return undefined;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const { data } = await api.get(`/people/${kind}/search`, { params: { q: query } });
+        if (!cancelled) setSuggestions(Array.isArray(data) ? data.slice(0, 8) : []);
+      } catch (e) {
+        if (!cancelled) setSuggestions([]);
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [contact, kind, searchMode]);
 
   const validateContact = (val) => {
     if (!/^\d{6,15}$/.test(val.replace(/\D/g, ""))) {
@@ -90,6 +114,7 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
 
   const reset = () => {
     setContact(""); setCountryCode("+91"); setFound(null); setShowForm(false);
+    setSuggestions([]);
     setForm({ name: "", father_name: "", address: "", area: "", reference: "", aadhar_number: "" });
   };
 
@@ -98,7 +123,7 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
         <div className="flex-1">
           <Label>{kind === "donors" ? "Find Donor by Contact Number, Name, or Father's Name" : "Contact Number"} <span className="text-red-500">*</span></Label>
-          <div className="flex gap-2">
+          <div className="relative flex gap-2">
             <Input
               data-testid="lookup-contact"
               value={contact}
@@ -107,8 +132,24 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
               onKeyDown={e => e.key === "Enter" && doLookup()}
               className={contactError ? "border-red-500" : ""}
             />
+            {searchMode && suggestions.length > 0 && (
+              <div className="absolute left-0 right-0 z-20 mt-12 overflow-hidden bg-white border rounded-lg shadow-lg border-earth">
+                {suggestions.map(person => (
+                  <button
+                    type="button"
+                    key={person.id}
+                    onClick={() => { setContact(person.contact || person.name); setFound(person); setSuggestions([]); onSaved?.(person); }}
+                    className="block w-full px-3 py-2 text-left border-b last:border-b-0 border-earth hover:bg-sidebar"
+                  >
+                    <span className="block text-sm font-medium">{person.name} <span className="font-normal text-[color:var(--text-muted)]">#{person.serial}</span></span>
+                    <span className="block text-xs text-[color:var(--text-muted)]">{person.contact}{person.father_name ? ` · Father: ${person.father_name}` : ""}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           {contactError && <div className="mt-1 text-xs text-red-500">{contactError}</div>}
+          {searchMode && searching && <div className="mt-1 text-xs text-[color:var(--text-muted)]">Searching…</div>}
         </div>
         <div className="flex gap-2">
           <Button

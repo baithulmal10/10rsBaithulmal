@@ -204,7 +204,7 @@ export default function Payments() {
               <div className="space-y-5">
                 <div>
                   <div className="mb-2 text-xs tracking-widest uppercase text-copper">Step 1 · Find Donor</div>
-                  <PersonLookupForm kind="donors" hideOnFound onSaved={setDonor} allowCreate={!isCollector(user)} />
+                  <PersonLookupForm kind="donors" hideOnFound onSaved={setDonor} allowCreate={!isCollector(user)} searchMode />
                   <Button type="button" variant="outline" className="mt-3 rounded-full" onClick={async () => { try { const { data } = await api.get("/people/donors"); setDonors(data); setShowDonors(true); } catch (e) { toast.error(formatDetail(e.response?.data?.detail)); } }} data-testid="pay-donor-list-btn">
                     Pay · Select Donor
                   </Button>
