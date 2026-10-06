@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { Plus, MagnifyingGlass } from "@phosphor-icons/react";
 import { ROLES, roleLabel, useAuth } from "@/context/AuthContext";
 
-const PERMISSIONS = ["donors.write", "beneficiaries.write", "payments.write", "loans.write", "sadakah.write", "expenses.write"];
+const PERMISSIONS = ["donors.write", "beneficiaries.write", "payments.write", "loans.write", "vattiyilla.first_head", "sadakah.write", "expenses.write"];
 
 export default function AdminUsers() {
   const { user } = useAuth();
@@ -59,7 +59,7 @@ export default function AdminUsers() {
   };
 
   const remove = async (id) => {
-    if (!window.confirm("Delete this user?")) return;
+    if (!window.confirm("DELETE THIS USER?")) return;
     try { await api.delete(`/admin/users/${id}`); toast.success("Deleted"); load(); }
     catch (e) { toast.error(formatDetail(e.response?.data?.detail)); }
   };
@@ -130,7 +130,7 @@ export default function AdminUsers() {
                     {PERMISSIONS.map(p => (
                       <label key={p} className="flex items-center gap-2 text-sm cursor-pointer">
                         <input type="checkbox" checked={form.permissions.includes(p)} onChange={() => togglePerm(p)} />
-                        <span>{p}</span>
+                        <span>{p === "vattiyilla.first_head" ? "VI First Head Approval" : p}</span>
                       </label>
                     ))}
                   </div>

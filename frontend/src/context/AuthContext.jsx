@@ -31,6 +31,10 @@ export function canApprovePayments(user) {
   return isAccountantAdmin(user);
 }
 
+export function canApproveVattiyillaFirstHead(user) {
+  return isStaff(user) && (user?.permissions || []).includes("vattiyilla.first_head");
+}
+
 export function roleLabel(role) {
   return ROLE_LABELS[role] || role || "";
 }

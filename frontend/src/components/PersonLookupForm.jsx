@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, formatDetail } from "@/lib/api";
+import { api, formatDate, formatDetail } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -19,12 +19,12 @@ const countryCodes = [
  * onSaved(person)
  */
 export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, allowCreate = true, searchMode = false }) {
-  const [contact, setContact] = useState("");
+  const [lookupValue, setLookupValue] = useState("");
   const [countryCode, setCountryCode] = useState("+91");
   const [checking, setChecking] = useState(false);
   const [found, setFound] = useState(null); // record if exists
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: "", father_name: "", address: "", area: "", reference: "", aadhar_number: "" });
+  const [form, setForm] = useState({ name: "", father_name: "", address: "", area: "", reference: "", aadhar_number: "", contact: "" });
   const [saving, setSaving] = useState(false);
   const [contactError, setContactError] = useState("");
   const [aadharError, setAadharError] = useState("");
@@ -35,7 +35,7 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
 
   useEffect(() => {
     if (!searchMode) return undefined;
-    const query = contact.trim();
+    const query = lookupValue.trim();
     if (query.length < 2) {
       setSuggestions([]);
       return undefined;
@@ -53,7 +53,7 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
       }
     }, 250);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [contact, kind, searchMode]);
+  }, [lookupValue, kind, searchMode]);
 
   const validateContact = (val) => {
     if (!/^\d{6,15}$/.test(val.replace(/\D/g, ""))) {
@@ -63,24 +63,36 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
   };
 
   const validateAadhar = (val) => {
-    if (val && !/^\d{12}$/.test(val.replace(/\D/g, ''))) {
-      return "Aadhar must be 12 digits";
+    if (kind === "beneficiaries" && !val.trim()) {
+      return "Aadhaar number is required";
+    }
+    if (val && !/^\d{12}$/.test(val.replace(/\D/g, ""))) {
+      return "Aadhaar must be 12 digits";
     }
     return "";
   };
 
   const doLookup = async () => {
-    const search = contact.trim();
-    const err = search && /^\d/.test(search) ? validateContact(search) : "";
+    const search = lookupValue.trim();
+    const aadhaar = search.replace(/\D/g, "");
+    const err = kind === "beneficiaries"
+      ? (/^\d{12}$/.test(aadhaar) ? "" : "Enter a valid 12-digit Aadhaar number")
+      : (search && /^\d/.test(search) ? validateContact(search) : "");
     if (err) { setContactError(err); toast.error(err); return; }
     setContactError("");
     setChecking(true); setFound(null); setShowForm(false);
     try {
-      const { data } = await api.get(`/people/${kind}/lookup`, { params: { contact: search } });
+      const lookupParams = kind === "beneficiaries"
+        ? { aadhar_number: aadhaar }
+        : { contact: search };
+      const { data } = await api.get(`/people/${kind}/lookup`, { params: lookupParams });
       if (data.exists) {
         setFound(data.record);
         if (hideOnFound) onSaved?.(data.record);
       } else if (allowCreate) {
+        if (kind === "beneficiaries") {
+          setForm(current => ({ ...current, aadhar_number: aadhaar }));
+        }
         setShowForm(true);
       } else {
         toast.error(`No ${noun} found. Ask an Account Assistant or Accountant Admin to register them.`);
@@ -92,7 +104,8 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
 
   const doSave = async (e) => {
     e.preventDefault();
-    const contactErr = validateContact(contact);
+    const contactToSave = kind === "beneficiaries" ? form.contact : lookupValue;
+    const contactErr = validateContact(contactToSave);
     const aadharErr = validateAadhar(form.aadhar_number);
     if (contactErr || aadharErr) {
       toast.error(contactErr || aadharErr);
@@ -100,7 +113,9 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
     }
     setSaving(true);
     try {
-      const storedContact = kind === "donors" ? `${countryCode}${contact.replace(/\D/g, "")}` : contact.trim();
+      const storedContact = kind === "donors"
+        ? `${countryCode}${lookupValue.replace(/\D/g, "")}`
+        : contactToSave.trim();
       const { data } = await api.post(`/people/${kind}`, { ...form, contact: storedContact });
       toast.success(`${noun} registered - ID: ${data.serial}`);
       console.log("✅ Registered:", data);
@@ -113,22 +128,22 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
   };
 
   const reset = () => {
-    setContact(""); setCountryCode("+91"); setFound(null); setShowForm(false);
+    setLookupValue(""); setCountryCode("+91"); setFound(null); setShowForm(false);
     setSuggestions([]);
-    setForm({ name: "", father_name: "", address: "", area: "", reference: "", aadhar_number: "" });
+    setForm({ name: "", father_name: "", address: "", area: "", reference: "", aadhar_number: "", contact: "" });
   };
 
   return (
     <div className="space-y-4" data-testid={`lookup-${kind}`}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
         <div className="flex-1">
-          <Label>{kind === "donors" ? "Find Donor by Contact Number, Name, or Father's Name" : "Contact Number"} <span className="text-red-500">*</span></Label>
+          <Label>{kind === "beneficiaries" ? "Aadhaar Number" : kind === "donors" ? "Find Donor by Contact Number, Name, or Father's Name" : "Contact Number"} <span className="text-red-500">*</span></Label>
           <div className="relative flex gap-2">
             <Input
               data-testid="lookup-contact"
-              value={contact}
-              onChange={e => setContact(e.target.value)}
-              placeholder={kind === "donors" ? "Phone, name, or father's name" : "Enter contact number"}
+              value={lookupValue}
+              onChange={e => { setLookupValue(e.target.value); setContactError(""); }}
+              placeholder={kind === "beneficiaries" ? "Enter 12-digit Aadhaar number" : kind === "donors" ? "Phone, name, or father's name" : "Enter contact number"}
               onKeyDown={e => e.key === "Enter" && doLookup()}
               className={contactError ? "border-red-500" : ""}
             />
@@ -138,7 +153,7 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
                   <button
                     type="button"
                     key={person.id}
-                    onClick={() => { setContact(person.contact || person.name); setFound(person); setSuggestions([]); onSaved?.(person); }}
+                    onClick={() => { setLookupValue(kind === "beneficiaries" ? person.aadhar_number || "" : person.contact || person.name); setFound(person); setSuggestions([]); onSaved?.(person); }}
                     className="block w-full px-3 py-2 text-left border-b last:border-b-0 border-earth hover:bg-sidebar"
                   >
                     <span className="block text-sm font-medium">{person.name} <span className="font-normal text-[color:var(--text-muted)]">#{person.serial}</span></span>
@@ -176,16 +191,17 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
                 <span className="text-xs text-[color:var(--text-muted)]">#{found.serial}</span>
               </div>
               <div className="mt-1 text-sm text-[color:var(--text-secondary)]">
-                Father: {found.father_name} · {found.contact}
+                Father: {found.father_name}
               </div>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3 pt-3 text-sm border-t">
+            <div><span className="font-medium">Contact:</span> {found.contact || "—"}</div>
             <div><span className="font-medium">Address:</span> {found.address}</div>
             <div><span className="font-medium">Area:</span> {found.area || "—"}</div>
             <div><span className="font-medium">Reference:</span> {found.reference || "—"}</div>
-            <div><span className="font-medium">Aadhar:</span> {found.aadhar_number || "—"}</div>
-            <div><span className="font-medium">Reg. Date:</span> {found.registration_date || "—"}</div>
+            <div><span className="font-medium">Aadhaar:</span> {found.aadhar_number || "—"}</div>
+            <div><span className="font-medium">Reg. Date:</span> {formatDate(found.registration_date)}</div>
           </div>
         </div>
       )}
@@ -194,6 +210,10 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
         <form onSubmit={doSave} className="p-6 space-y-4 card-earth" data-testid="lookup-new-form">
             <div className="text-sm font-medium tracking-widest uppercase text-copper">New {noun} Registration</div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {kind === "beneficiaries" && <div>
+              <Label>Contact Number <span className="text-red-500">*</span></Label>
+              <Input data-testid="new-contact" required value={form.contact} onChange={e => setForm({ ...form, contact: e.target.value })} placeholder="Enter contact number" />
+            </div>}
             <div>
               <Label>Name <span className="text-red-500">*</span></Label>
               <Input required data-testid="new-name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
@@ -215,8 +235,8 @@ export default function PersonLookupForm({ kind, onSaved, hideOnFound = false, a
               <Input data-testid="new-reference" value={form.reference} onChange={e => setForm({ ...form, reference: e.target.value })} />
             </div>
             <div>
-              <Label>Aadhar Card (optional, 12 digits)</Label>
-              <Input data-testid="new-aadhar" value={form.aadhar_number} onChange={e => { setForm({ ...form, aadhar_number: e.target.value }); setAadharError(validateAadhar(e.target.value)); }} placeholder="e.g. 123456789012" maxLength="12" className={aadharError ? "border-red-500" : ""} />
+              <Label>Aadhaar Number {kind === "beneficiaries" ? <span className="text-red-500">*</span> : "(Optional, 12 Digits)"}</Label>
+              <Input data-testid="new-aadhar" value={form.aadhar_number} onChange={e => { setForm({ ...form, aadhar_number: e.target.value }); setAadharError(validateAadhar(e.target.value)); }} placeholder="E.G. 123456789012" maxLength="12" required={kind === "beneficiaries"} className={aadharError ? "border-red-500" : ""} />
               {aadharError && <div className="mt-1 text-xs text-red-500">{aadharError}</div>}
             </div>
             {kind === "donors" && <div>

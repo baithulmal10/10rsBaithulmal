@@ -16,6 +16,10 @@ import Reports from "@/pages/Reports";
 import AdminUsers from "@/pages/AdminUsers";
 import VattiyillaDashboard from "@/pages/VattiyillaDashboard";
 import VattiyillaAccounts from "@/pages/VattiyillaAccounts";
+import YmskMembers from "@/pages/YmskMembers";
+import BaithulmalReport from "@/pages/BaithulmalReport";
+import VIReport from "@/pages/VIReport";
+import CollectorCollectionReport from "@/pages/CollectorCollectionReport";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -41,6 +45,7 @@ export default function App() {
             <Route path="/donors" element={<PeopleList kind="donors" title="Donors" subtitle="Those who give — the lifeblood of the community fund." />} />
             <Route path="/beneficiaries" element={<PeopleList kind="beneficiaries" title="Beneficiaries" subtitle="Those we serve — recipients of Kadan, Sadakah and support." />} />
             <Route path="/workers" element={<PeopleList kind="workers" title="Workers" subtitle="Team members who help operate the fund." />} />
+            <Route path="/ymsk-members" element={<YmskMembers />} />
             <Route path="/payments" element={<Payments />} />
             <Route path="/payments/approved" element={<ApprovedPayments />} />
             <Route path="/kadan" element={<Kadan variant="kadan" />} />
@@ -51,6 +56,9 @@ export default function App() {
             <Route path="/expenses" element={<Expenses />} />
             <Route path="/accounts" element={<Accounts />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="/reports/10rs" element={<BaithulmalReport />} />
+            <Route path="/reports/vi" element={<VIReport />} />
+            <Route path="/reports/collector-collections" element={<AdminOnly><CollectorCollectionReport /></AdminOnly>} />
             <Route path="/admin" element={<AdminOnly><AdminUsers /></AdminOnly>} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

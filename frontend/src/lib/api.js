@@ -38,3 +38,15 @@ export function inr(n) {
   if (n === null || n === undefined || isNaN(n)) return "₹0";
   return "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 }
+
+export function formatDate(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, inr, formatDetail } from "@/lib/api";
+import { api, formatDate, inr, formatDetail } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import PersonLookupForm from "@/components/PersonLookupForm";
 import { Button } from "@/components/ui/button";
@@ -167,7 +167,7 @@ export default function Expenses() {
                   <TableCell className="capitalize">{e.kind}</TableCell>
                   <TableCell>{e.kind === "salary" ? `${e.worker?.name || "—"} · ${e.month || ""}` : e.category}</TableCell>
                   <TableCell className="font-semibold">{inr(e.amount)}</TableCell>
-                  <TableCell className="text-xs text-[color:var(--text-muted)]">{new Date(e.created_at).toLocaleDateString()}</TableCell>
+                  <TableCell className="text-xs text-[color:var(--text-muted)]">{formatDate(e.created_at)}</TableCell>
                   <TableCell className="text-sm">{e.note || "—"}</TableCell>
                 </TableRow>
               ))}

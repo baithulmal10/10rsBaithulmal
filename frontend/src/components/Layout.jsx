@@ -19,16 +19,20 @@ const nav = [
   { to: "/kadan", icon: HandCoins, label: "Kadan (Loan)", testid: "nav-kadan", group: "Baithulmal" },
   { to: "/sadakah", icon: HandHeart, label: "Sadakah", testid: "nav-sadakah", group: "Baithulmal" },
   { to: "/accounts", icon: Bank, label: "Accounts", testid: "nav-accounts", group: "Baithulmal" },
+  { to: "/reports/10rs", icon: ChartBar, label: "10Rs Baithulmal Report", testid: "nav-10rs-report", group: "Baithulmal" },
 
-  // Vattiyilla Kadan (separate fund)
-  { to: "/vattiyilla", icon: HandCoins, label: "V-Dashboard", testid: "nav-v-dashboard", group: "Vattiyilla" },
-  { to: "/vattiyilla-loans", icon: HandCoins, label: "V-Loans", testid: "nav-vattiyilla", group: "Vattiyilla" },
-  { to: "/vattiyilla-accounts", icon: Bank, label: "V-Accounts", testid: "nav-v-accounts", group: "Vattiyilla" },
+  // VI (separate fund)
+  { to: "/vattiyilla", icon: HandCoins, label: "VI Dashboard", testid: "nav-v-dashboard", group: "VI" },
+  { to: "/vattiyilla-loans", icon: HandCoins, label: "VI Loans", testid: "nav-vattiyilla", group: "VI" },
+  { to: "/vattiyilla-accounts", icon: Bank, label: "VI Accounts", testid: "nav-v-accounts", group: "VI" },
+  { to: "/reports/vi", icon: ChartBar, label: "VI Report", testid: "nav-vi-report", group: "VI" },
 
   // Shared
   { to: "/workers", icon: Users, label: "Workers", testid: "nav-workers", group: "Shared" },
+  { to: "/ymsk-members", icon: UsersThree, label: "YMSK Members", testid: "nav-ymsk-members", group: "Shared" },
   { to: "/expenses", icon: Receipt, label: "Expenses", testid: "nav-expenses", group: "Shared" },
-  { to: "/reports", icon: ChartBar, label: "Reports", testid: "nav-reports", group: "Shared" },
+  { to: "/reports", icon: ChartBar, label: "Complete Report", testid: "nav-reports", group: "Shared" },
+  { to: "/reports/collector-collections", icon: ChartBar, label: "Collector Collection Report", testid: "nav-collector-report", adminOnly: true, group: "Shared" },
   { to: "/admin", icon: GearSix, label: "Admin", testid: "nav-admin", adminOnly: true, group: "Shared" },
 ];
 
@@ -48,7 +52,7 @@ function SidebarContent({ user, logout, onNavigate }) {
       </div>
 
       <nav className="flex-1 px-3 pb-6 overflow-y-auto">
-        {["Baithulmal", "Vattiyilla", "Shared"].map(group => {
+        {["Baithulmal", "VI", "Shared"].map(group => {
           const items = nav.filter(n => n.group === group
             && (!n.adminOnly || isAccountantAdmin(user))
             );
@@ -56,7 +60,7 @@ function SidebarContent({ user, logout, onNavigate }) {
           return (
             <div key={group} className="mb-4">
               <div className="px-3 mb-1 text-[10px] uppercase tracking-widest text-[color:var(--text-muted)] font-semibold">
-                {group === "Baithulmal" ? "10₹ Baithulmal" : group === "Vattiyilla" ? "Vattiyilla Kadan" : "Shared"}
+                {group === "Baithulmal" ? "10₹ Baithulmal" : group === "VI" ? "VI" : "Shared"}
               </div>
               {items.map(n => {
                 const Icon = n.icon;

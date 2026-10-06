@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, inr, formatDetail } from "@/lib/api";
+import { api, formatDate, inr, formatDetail } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import StatusBadge from "@/components/StatusBadge";
@@ -30,7 +30,7 @@ export default function VattiyillaAccounts() {
   return (
     <div data-testid="vattiyilla-accounts">
       <PageHeader
-        title="Vattiyilla Accounts"
+        title="VI Accounts"
         subtitle="Isolated ledger for the interest-free loan fund — separate from the main Baithulmal accounts."
       />
 
@@ -67,7 +67,7 @@ export default function VattiyillaAccounts() {
             {loading ? (
               <TableRow><TableCell colSpan={7} className="text-center py-10 text-[color:var(--text-muted)]">Loading…</TableCell></TableRow>
             ) : loans.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-10 text-[color:var(--text-muted)]">No Vattiyilla loans yet.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-10 text-[color:var(--text-muted)]">No VI loans yet.</TableCell></TableRow>
             ) : loans.map(l => {
               const outstanding = Math.max(0, l.amount - (l.total_paid || 0));
               return (
@@ -81,7 +81,7 @@ export default function VattiyillaAccounts() {
                   <TableCell className="text-moss font-semibold">{inr(l.total_paid || 0)}</TableCell>
                   <TableCell className="text-[color:var(--status-vatti)] font-semibold">{inr(outstanding)}</TableCell>
                   <TableCell><StatusBadge status={l.status} /></TableCell>
-                  <TableCell className="text-xs">{new Date(l.due_date).toLocaleDateString()}</TableCell>
+                  <TableCell className="text-xs">{formatDate(l.due_date)}</TableCell>
                 </TableRow>
               );
             })}

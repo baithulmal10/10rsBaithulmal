@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { inr } from "@/lib/api";
+import { formatDate, inr } from "@/lib/api";
 
 const BRAND = { moss: [36, 79, 53], copper: [198, 122, 61], text: [26, 33, 28] };
 
@@ -14,13 +14,13 @@ export function generatePdf({ title, subtitle, sections }) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(20);
   doc.setTextColor(253, 251, 247);
-  doc.text("10₹ Baithulmal", 40, 32);
+  doc.text("10₹ BAITHULMAL", 40, 32);
   doc.setFontSize(11);
   doc.setFont("helvetica", "normal");
-  doc.text(title, 40, 52);
+  doc.text(String(title).toLocaleUpperCase(), 40, 52);
   if (subtitle) {
     doc.setFontSize(9);
-    doc.text(subtitle, 40, 64);
+    doc.text(String(subtitle).toLocaleUpperCase(), 40, 64);
   }
 
   // Copper accent
@@ -32,14 +32,14 @@ export function generatePdf({ title, subtitle, sections }) {
     doc.setTextColor(...BRAND.text);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(12);
-    doc.text(sec.heading, 40, y);
+    doc.text(String(sec.heading).toLocaleUpperCase(), 40, y);
     y += 8;
 
     if (sec.rows && sec.rows.length) {
       autoTable(doc, {
         startY: y + 4,
-        head: [sec.columns],
-        body: sec.rows,
+        head: [sec.columns.map(value => String(value).toLocaleUpperCase())],
+        body: sec.rows.map(row => row.map(value => typeof value === "string" ? value.toLocaleUpperCase() : value)),
         theme: "grid",
         headStyles: { fillColor: BRAND.moss, textColor: [253, 251, 247], fontStyle: "bold" },
         styles: { fontSize: 9, cellPadding: 5, textColor: BRAND.text },
@@ -51,7 +51,7 @@ export function generatePdf({ title, subtitle, sections }) {
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
       doc.setTextColor(120, 120, 120);
-      doc.text("No records.", 40, y + 16);
+      doc.text("NO RECORDS.", 40, y + 16);
       y += 32;
     }
 
@@ -59,7 +59,7 @@ export function generatePdf({ title, subtitle, sections }) {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(11);
       doc.setTextColor(...BRAND.copper);
-      doc.text(`Total: ${inr(sec.total)}`, 40, y);
+      doc.text(`TOTAL: ${inr(sec.total)}`, 40, y);
       y += 24;
     }
 
@@ -72,7 +72,7 @@ export function generatePdf({ title, subtitle, sections }) {
     doc.setPage(i);
     doc.setFontSize(8);
     doc.setTextColor(140, 140, 140);
-    doc.text(`Generated ${new Date().toLocaleString()} · Page ${i} of ${pages}`, 40, 820);
+    doc.text(`GENERATED ${formatDate(new Date())} · PAGE ${i} OF ${pages}`, 40, 820);
   }
 
   return doc;
@@ -91,8 +91,8 @@ export function generateReceiptTemplate({ image, receiptNo, donor, paymentDate, 
   doc.setFontSize(18);
   doc.text(String(receiptNo || "—"), 235, 289);
   doc.text(String(donor || "—").toUpperCase(), 235, 336);
-  doc.text(String(paymentDate || "—"), 235, 382);
-  doc.text(`${dateFrom || "—"} to ${dateTo || dateFrom || "—"}`, 235, 429);
+  doc.text(String(paymentDate || "—").toLocaleUpperCase(), 235, 382);
+  doc.text(`${dateFrom || "—"} TO ${dateTo || dateFrom || "—"}`.toLocaleUpperCase(), 235, 429);
   doc.setFillColor(...BRAND.moss);
   doc.rect(150, 450, 295, 55, "F");
   doc.setTextColor(253, 251, 247);

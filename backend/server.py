@@ -99,6 +99,12 @@ def _role(user: dict) -> str:
     return canonical_role((user or {}).get("role"))
 
 
+def _aadhaar_match_query(value: str) -> dict:
+    digits = re.sub(r"\D", "", value or "")
+    pattern = "^" + r"\D*".join(re.escape(digit) for digit in digits) + r"\D*$"
+    return {"aadhar_number": {"$regex": pattern}}
+
+
 def is_accountant_admin(user: dict) -> bool:
     return _role(user) == ROLE_ACCOUNTANT_ADMIN
 
@@ -186,6 +192,12 @@ async def require_accountant_admin(user: dict = Depends(get_current_user)) -> di
     return user
 
 
+async def require_vattiyilla_first_head(user: dict = Depends(require_staff)) -> dict:
+    if "vattiyilla.first_head" not in (user.get("permissions") or []):
+        raise HTTPException(status_code=403, detail="V-Kadan first-head approval permission required")
+    return user
+
+
 # Backward-compatible alias used by older call sites
 require_accountant_or_admin = require_staff
 
@@ -263,17 +275,28 @@ class PersonUpdate(BaseModel):
 
 
 class SecurityDetail(BaseModel):
+    name: Optional[str] = ""
+    father_name: Optional[str] = ""
+    address: Optional[str] = ""
+    contact: Optional[str] = ""
+    member_id: Optional[str] = None
+
+
+class YmskMemberIn(BaseModel):
     name: str
     father_name: str
+    date_of_birth: str
     address: str
     contact: str
+    member_type: Literal["member", "honour_member"]
+    join_date: Optional[str] = None
 
 
 class KadanIn(BaseModel):
     beneficiary_id: str
     category: Literal["Medical", "Education", "Economic"]
-    amount: float
-    repayment_months: int
+    amount: float = Field(gt=0)
+    repayment_months: int = Field(gt=0)
     area: str
     security: SecurityDetail
     kadan_type: Literal["kadan", "vattiyilla"] = "kadan"
@@ -281,7 +304,7 @@ class KadanIn(BaseModel):
 
 
 class RepaymentIn(BaseModel):
-    amount: float
+    amount: float = Field(gt=0)
     note: Optional[str] = ""
 
 
@@ -297,7 +320,9 @@ class BlockIn(BaseModel):
 
 class SadakahIn(BaseModel):
     beneficiary_id: str
-    amount: float
+    amount: float = Field(gt=0)
+    purpose_type: Literal["medical", "education", "economic", "others"] = "others"
+    purpose_other: Optional[str] = ""
     note: Optional[str] = ""
 
 
@@ -466,10 +491,22 @@ async def _next_serial(coll: str) -> str:
 
 
 @api.get("/people/{kind}/lookup")
-async def lookup_person(kind: str, contact: str, user: dict = Depends(get_current_user)):
+async def lookup_person(
+    kind: str,
+    contact: Optional[str] = None,
+    aadhar_number: Optional[str] = None,
+    user: dict = Depends(get_current_user),
+):
     if kind not in COLLECTIONS:
         raise HTTPException(status_code=404, detail="Unknown kind")
-    key = contact.strip()
+    if aadhar_number:
+        digits = re.sub(r"\D", "", aadhar_number)
+        if not re.fullmatch(r"\d{12}", digits):
+            raise HTTPException(status_code=400, detail="Aadhaar number must contain 12 digits")
+        doc = await db[kind].find_one(_aadhaar_match_query(digits), {"_id": 0})
+        if doc:
+            return {"exists": True, "record": doc}
+    key = (contact or "").strip()
     if not key:
         return {"exists": False, "record": None}
     digits = re.sub(r"\D", "", key)
@@ -498,6 +535,7 @@ async def search_people(kind: str, q: Optional[str] = None, place: Optional[str]
         if q:
             query["$or"] = [
                 {"contact": {"$regex": q, "$options": "i"}},
+                {"aadhar_number": {"$regex": q, "$options": "i"}},
                 {"name": {"$regex": q, "$options": "i"}},
                 {"father_name": {"$regex": q, "$options": "i"}},
                 {"reference": {"$regex": q, "$options": "i"}},
@@ -527,12 +565,18 @@ async def create_person(kind: str, data: PersonBase, user: dict = Depends(requir
     contact = data.contact.strip()
     name = data.name.strip()
     father = data.father_name.strip()
-    aadhaar = (data.aadhar_number or "").strip()
+    aadhaar = re.sub(r"\D", "", data.aadhar_number or "")
+    if not contact:
+        raise HTTPException(status_code=400, detail="Contact number is required")
+    if kind == "beneficiaries" and not aadhaar:
+        raise HTTPException(status_code=400, detail="Aadhaar number is required for beneficiaries")
+    if kind == "beneficiaries" and not re.fullmatch(r"\d{12}", re.sub(r"\D", "", aadhaar)):
+        raise HTTPException(status_code=400, detail="Aadhaar number must contain 12 digits")
     reference = (data.reference or "").strip()
     registration_date = (data.registration_date or today_ymd())
     duplicate_query = {"$or": [{"contact": contact}]}
     if aadhaar:
-        duplicate_query["$or"].append({"aadhar_number": aadhaar})
+        duplicate_query["$or"].append(_aadhaar_match_query(aadhaar))
     if name and father:
         duplicate_query["$or"].append({"name": name, "father_name": father})
     existing = await db[kind].find_one({"$or": duplicate_query["$or"]})
@@ -571,6 +615,25 @@ async def update_person(kind: str, pid: str, data: PersonUpdate, user: dict = De
     if kind not in COLLECTIONS:
         raise HTTPException(status_code=404, detail="Unknown kind")
     updates = {k: v.strip() if isinstance(v, str) else v for k, v in data.model_dump(exclude_none=True).items()}
+    if kind == "beneficiaries":
+        existing = await db[kind].find_one({"id": pid}, {"_id": 0})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Not found")
+        next_contact = updates.get("contact", existing.get("contact", ""))
+        next_aadhaar = updates.get("aadhar_number", existing.get("aadhar_number", ""))
+        if not str(next_contact or "").strip():
+            raise HTTPException(status_code=400, detail="Contact number is required")
+        if not re.fullmatch(r"\d{12}", re.sub(r"\D", "", str(next_aadhaar or ""))):
+            raise HTTPException(status_code=400, detail="Aadhaar number must contain 12 digits")
+        normalized_aadhaar = re.sub(r"\D", "", str(next_aadhaar))
+        duplicate = await db[kind].find_one({
+            "id": {"$ne": pid},
+            **_aadhaar_match_query(normalized_aadhaar),
+        }, {"_id": 0, "id": 1})
+        if duplicate:
+            raise HTTPException(status_code=400, detail="Aadhaar number is already registered")
+        if "aadhar_number" in updates:
+            updates["aadhar_number"] = normalized_aadhaar
     if updates:
         await db[kind].update_one({"id": pid}, {"$set": updates})
     doc = await db[kind].find_one({"id": pid}, {"_id": 0})
@@ -589,10 +652,8 @@ async def delete_person(kind: str, pid: str, admin: dict = Depends(require_admin
 
 # ---------------- Loans (Kadan + Vattiyilla Kadan) ----------------
 def _compute_loan_status(loan: dict) -> dict:
-    """Compute derived status: active | time_limit_exceed | blocked | closed."""
-    if loan.get("status") == "blocked":
-        return loan
-    if loan.get("status") == "closed":
+    """Preserve workflow statuses and derive overdue/closed status for issued loans."""
+    if loan.get("status") in {"pending", "rejected", "blocked", "closed"}:
         return loan
     now = datetime.now(timezone.utc)
     due = datetime.fromisoformat(loan["due_date"])
@@ -617,13 +678,59 @@ async def list_loans(kadan_type: Optional[str] = None, user: dict = Depends(requ
     return docs
 
 
+@api.get("/ymsk-members")
+async def list_ymsk_members(user: dict = Depends(require_member)):
+    return await db.ymsk_members.find({}, {"_id": 0}).sort("name", 1).to_list(5000)
+
+
+@api.post("/ymsk-members")
+async def create_ymsk_member(data: YmskMemberIn, user: dict = Depends(require_staff)):
+    contact = data.contact.strip()
+    if not contact:
+        raise HTTPException(status_code=400, detail="Contact number is required")
+    try:
+        datetime.strptime(data.date_of_birth, "%Y-%m-%d")
+        join_date = today_ymd()
+        datetime.strptime(join_date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Dates must be YYYY-MM-DD")
+    doc = {
+        "id": new_id(),
+        "name": data.name.strip(),
+        "father_name": data.father_name.strip(),
+        "date_of_birth": data.date_of_birth,
+        "address": data.address.strip(),
+        "contact": contact,
+        "member_type": data.member_type,
+        "join_date": join_date,
+        "created_at": now_iso(),
+        "created_by": user["id"],
+    }
+    if not all(doc[field] for field in ("name", "father_name", "address")):
+        raise HTTPException(status_code=400, detail="Name, father's name, and address are required")
+    await db.ymsk_members.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
 @api.post("/loans")
 async def create_loan(data: KadanIn, user: dict = Depends(require_staff)):
     beneficiary = await db.beneficiaries.find_one({"id": data.beneficiary_id}, {"_id": 0})
     if not beneficiary:
         raise HTTPException(status_code=404, detail="Beneficiary not found")
+    if not beneficiary.get("contact") or not re.fullmatch(r"\d{12}", re.sub(r"\D", "", beneficiary.get("aadhar_number", ""))):
+        raise HTTPException(status_code=400, detail="Beneficiary must have a valid contact number and 12-digit Aadhaar")
+    security = data.security.model_dump()
+    security = {key: value.strip() if isinstance(value, str) else value for key, value in security.items()}
+    if not security.get("member_id"):
+        raise HTTPException(status_code=400, detail="Select a YMSK security member")
+    member = await db.ymsk_members.find_one({"id": security["member_id"]}, {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="YMSK security member not found")
+    security.update({key: member[key] for key in ("name", "father_name", "address", "contact")})
+    if not all(security.get(field) for field in ("name", "father_name", "address", "contact")):
+        raise HTTPException(status_code=400, detail="Complete security details are required")
     now = datetime.now(timezone.utc)
-    due = now + timedelta(days=30 * data.repayment_months)
     doc = {
         "id": new_id(),
         "kadan_type": data.kadan_type,
@@ -632,13 +739,15 @@ async def create_loan(data: KadanIn, user: dict = Depends(require_staff)):
         "repayment_months": int(data.repayment_months),
         "area": data.area.strip(),
         "beneficiary": beneficiary,
-        "security": data.security.model_dump(),
+        "security": security,
         "notes": data.notes or "",
         "total_paid": 0.0,
         "repayments": [],
-        "status": "active",
+        "status": "pending",
+        "approval_stage": "first_head" if data.kadan_type == "vattiyilla" else "admin",
+        "given_date": None,
         "created_at": now.isoformat(),
-        "due_date": due.isoformat(),
+        "due_date": None,
         "block_info": None,
         "extension_history": [],
         "created_by": user["id"],
@@ -646,6 +755,52 @@ async def create_loan(data: KadanIn, user: dict = Depends(require_staff)):
     await db.loans.insert_one(doc)
     doc.pop("_id", None)
     return _compute_loan_status(doc)
+
+
+@api.post("/loans/{lid}/first-head-approve")
+async def approve_vattiyilla_first_head(lid: str, data: ApprovalActionIn, user: dict = Depends(require_vattiyilla_first_head)):
+    loan = await db.loans.find_one({"id": lid})
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    if loan.get("kadan_type") != "vattiyilla" or loan.get("status") != "pending" or loan.get("approval_stage") != "first_head":
+        raise HTTPException(status_code=400, detail="This V-Kadan is not awaiting first-head approval")
+    if data.approve:
+        updates = {"approval_stage": "admin", "first_head_approved_by": user["id"], "first_head_approved_at": now_iso()}
+    else:
+        updates = {"status": "rejected", "approval_stage": "rejected", "rejected_by": user["id"], "rejection_note": data.note or ""}
+    await db.loans.update_one({"id": lid}, {"$set": updates})
+    return await db.loans.find_one({"id": lid}, {"_id": 0})
+
+
+@api.post("/loans/{lid}/approve")
+async def approve_loan(lid: str, data: ApprovalActionIn, user: dict = Depends(require_accountant_admin)):
+    loan = await db.loans.find_one({"id": lid})
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    if loan.get("status") != "pending" or loan.get("approval_stage") != "admin":
+        raise HTTPException(status_code=400, detail="This Kadan is not awaiting admin approval")
+    updates = {
+        "status": "active" if data.approve else "rejected",
+        "approval_stage": "approved" if data.approve else "rejected",
+        "approved_at": now_iso(),
+        "approved_by": user["id"],
+        "approval_note": data.note or "",
+    }
+    if data.approve:
+        issued_at = datetime.now(timezone.utc)
+        updates["given_date"] = issued_at.strftime("%Y-%m-%d")
+        updates["due_date"] = (issued_at + timedelta(days=30 * int(loan.get("repayment_months", 1)))).isoformat()
+    await db.loans.update_one({"id": lid}, {"$set": updates})
+    doc = await db.loans.find_one({"id": lid}, {"_id": 0})
+    return _compute_loan_status(doc)
+
+
+@api.delete("/loans/{lid}")
+async def delete_loan(lid: str, user: dict = Depends(require_staff)):
+    result = await db.loans.delete_one({"id": lid})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    return {"ok": True}
 
 
 @api.get("/loans/{lid}")
@@ -661,6 +816,13 @@ async def repay_loan(lid: str, data: RepaymentIn, user: dict = Depends(require_s
     loan = await db.loans.find_one({"id": lid})
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
+    if loan.get("status") not in {"active", "time_limit_exceed"}:
+        raise HTTPException(status_code=400, detail="Repayments can only be recorded for approved loans")
+    if data.amount <= 0:
+        raise HTTPException(status_code=400, detail="Repayment amount must be greater than zero")
+    outstanding = max(0.0, float(loan["amount"]) - float(loan.get("total_paid", 0)))
+    if data.amount > outstanding:
+        raise HTTPException(status_code=400, detail="Repayment cannot exceed the outstanding balance")
     entry = {
         "id": new_id(),
         "amount": float(data.amount),
@@ -732,10 +894,14 @@ async def create_sadakah(data: SadakahIn, user: dict = Depends(require_staff)):
     beneficiary = await db.beneficiaries.find_one({"id": data.beneficiary_id}, {"_id": 0})
     if not beneficiary:
         raise HTTPException(status_code=404, detail="Beneficiary not found")
+    if data.purpose_type == "others" and not (data.purpose_other or "").strip():
+        raise HTTPException(status_code=400, detail="Purpose details are required when purpose type is Others")
     doc = {
         "id": new_id(),
         "beneficiary": beneficiary,
         "amount": float(data.amount),
+        "purpose_type": data.purpose_type,
+        "purpose_other": (data.purpose_other or "").strip(),
         "note": data.note or "",
         "created_at": now_iso(),
         "created_by": user["id"],
@@ -843,12 +1009,17 @@ async def list_approved_payment_donors(user: dict = Depends(require_member)):
 
 
 @api.get("/payments/collectors")
-async def list_payment_collectors(status: str = "approved", user: dict = Depends(require_member)):
-    rows = await db.payments.aggregate([
-        {"$match": {"status": status}},
+async def list_payment_collectors(status: Optional[str] = None, user: dict = Depends(require_member)):
+    pipeline = []
+    if status:
+        if status not in {"pending", "approved", "rejected"}:
+            raise HTTPException(status_code=400, detail="Invalid payment status")
+        pipeline.append({"$match": {"status": status}})
+    pipeline.extend([
         {"$group": {"_id": "$collected_by", "name": {"$first": "$collected_by_name"}, "total": {"$sum": "$total_amount"}}},
         {"$sort": {"name": 1}},
-    ]).to_list(5000)
+    ])
+    rows = await db.payments.aggregate(pipeline).to_list(5000)
     return [{"id": row["_id"], "name": row.get("name", ""), "total": row.get("total", 0)} for row in rows if row.get("_id")]
 
 
@@ -954,7 +1125,7 @@ async def accounts_summary(fund: str = "baithulmal", user: dict = Depends(requir
 
     # Loans of this fund
     loans_out = await db.loans.aggregate([
-        {"$match": {"kadan_type": loan_type_filter, "status": {"$in": ["active", "time_limit_exceed"]}}},
+        {"$match": {"kadan_type": loan_type_filter, "status": {"$in": ["active", "time_limit_exceed", "blocked", "closed"]}}},
         {"$group": {"_id": None, "total": {"$sum": "$amount"}, "paid": {"$sum": "$total_paid"}}},
     ]).to_list(1)
     total_loan = loans_out[0]["total"] if loans_out else 0
@@ -962,7 +1133,7 @@ async def accounts_summary(fund: str = "baithulmal", user: dict = Depends(requir
 
     # Total ever repaid to this fund
     all_repayments = await db.loans.aggregate([
-        {"$match": {"kadan_type": loan_type_filter}},
+        {"$match": {"kadan_type": loan_type_filter, "status": {"$in": ["active", "time_limit_exceed", "blocked", "closed"]}}},
         {"$group": {"_id": None, "total": {"$sum": "$total_paid"}}},
     ]).to_list(1)
     total_repaid = all_repayments[0]["total"] if all_repayments else 0
@@ -974,8 +1145,8 @@ async def accounts_summary(fund: str = "baithulmal", user: dict = Depends(requir
 
     if is_vatti:
         # Vattiyilla fund only tracks its loans + repayments (no interest, no separate payment collection)
-        # Balance = total_repaid - total_loan_outstanding (kitty available to lend again)
-        balance = total_repaid - (total_loan - total_loan_paid)
+        # Net repayments less approved disbursements; pending loans never affect the kitty.
+        balance = total_repaid - total_loan
         return {
             "fund": "vattiyilla",
             "balance": balance,
@@ -1119,6 +1290,116 @@ async def report(range: str = "daily", start: Optional[str] = None, end: Optiona
             "payments_count": len(payments),
             "expenses_count": len(expenses),
         },
+    }
+
+
+@api.get("/reports/collector-collections")
+async def collector_collection_report(
+    collection_date: str,
+    collector_id: Optional[str] = None,
+    admin: dict = Depends(require_admin),
+):
+    collection_date = _parse_ymd(collection_date, "collection_date")
+    query = {"collected_date": collection_date}
+    if collector_id:
+        query["collected_by"] = collector_id
+
+    records = await db.payments.find(query, {"_id": 0}).sort(
+        [("collected_by_name", 1), ("receipt_no", 1)]
+    ).to_list(None)
+
+    grouped = {}
+    for record in records:
+        collector_key = record.get("collected_by") or record.get("collected_by_name") or ""
+        summary = grouped.setdefault(collector_key, {
+            "collector_id": record.get("collected_by"),
+            "collector": record.get("collected_by_name") or "",
+            "collections": 0,
+            "total_amount": 0.0,
+        })
+        summary["collections"] += 1
+        summary["total_amount"] += float(record.get("total_amount") or 0)
+
+    summaries = sorted(grouped.values(), key=lambda row: row["collector"].casefold())
+    return {
+        "collection_date": collection_date,
+        "collector_id": collector_id,
+        "collections": len(records),
+        "total_amount": sum(float(record.get("total_amount") or 0) for record in records),
+        "collectors": summaries,
+        "records": records,
+    }
+
+
+@api.get("/reports/baithulmal")
+async def baithulmal_report(
+    date_from: str,
+    date_to: str,
+    status: Optional[str] = None,
+    collector_id: Optional[str] = None,
+    user: dict = Depends(require_member),
+):
+    date_from = _parse_ymd(date_from, "date_from")
+    date_to = _parse_ymd(date_to, "date_to")
+    if date_to < date_from:
+        raise HTTPException(status_code=400, detail="date_to must be on or after date_from")
+    if status and status not in {"pending", "approved", "rejected"}:
+        raise HTTPException(status_code=400, detail="Invalid payment status")
+
+    query = {"collected_date": {"$gte": date_from, "$lte": date_to}}
+    if status:
+        query["status"] = status
+    if collector_id:
+        query["collected_by"] = collector_id
+    records = await db.payments.find(query, {"_id": 0}).sort(
+        [("collected_date", -1), ("created_at", -1)]
+    ).to_list(None)
+    return {
+        "date_from": date_from,
+        "date_to": date_to,
+        "collections": len(records),
+        "total_amount": sum(float(record.get("total_amount") or 0) for record in records),
+        "records": records,
+    }
+
+
+@api.get("/reports/vi")
+async def vi_report(
+    date_from: str,
+    date_to: str,
+    status: Optional[str] = None,
+    user: dict = Depends(require_member),
+):
+    date_from = _parse_ymd(date_from, "date_from")
+    date_to = _parse_ymd(date_to, "date_to")
+    if date_to < date_from:
+        raise HTTPException(status_code=400, detail="date_to must be on or after date_from")
+    if status and status not in {"pending", "active", "time_limit_exceed", "blocked", "closed", "rejected"}:
+        raise HTTPException(status_code=400, detail="Invalid Kadan status")
+
+    start = datetime.strptime(date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc).isoformat()
+    end = (datetime.strptime(date_to, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1)).isoformat()
+    query = {
+        "kadan_type": "vattiyilla",
+        "created_at": {"$gte": start, "$lt": end},
+    }
+    records = await db.loans.find(query, {"_id": 0}).sort("created_at", -1).to_list(None)
+    for record in records:
+        _compute_loan_status(record)
+    if status:
+        records = [record for record in records if record.get("status") == status]
+
+    issued_records = [record for record in records if record.get("status") not in {"pending", "rejected"}]
+    return {
+        "date_from": date_from,
+        "date_to": date_to,
+        "records": len(records),
+        "total_issued": sum(float(record.get("amount") or 0) for record in issued_records),
+        "total_outstanding": sum(
+            max(0.0, float(record.get("amount") or 0) - float(record.get("total_paid") or 0))
+            for record in issued_records
+        ),
+        "loans": records,
     }
 
 

@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { api, inr, formatDetail } from "@/lib/api";
+import { api, formatDate, inr, formatDetail } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import PersonLookupForm from "@/components/PersonLookupForm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
@@ -19,6 +20,8 @@ export default function Sadakah() {
   const [searchQuery, setSearchQuery] = useState("");
   const [beneficiary, setBeneficiary] = useState(null);
   const [amount, setAmount] = useState("");
+  const [purposeType, setPurposeType] = useState("medical");
+  const [purposeOther, setPurposeOther] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -38,7 +41,9 @@ export default function Sadakah() {
     const filtered = rows.filter(s =>
       s.beneficiary?.name?.toLowerCase().includes(lowerQuery) ||
       s.beneficiary?.contact?.includes(query) ||
-      s.note?.toLowerCase().includes(lowerQuery)
+      s.note?.toLowerCase().includes(lowerQuery) ||
+      s.purpose_type?.toLowerCase().includes(lowerQuery) ||
+      s.purpose_other?.toLowerCase().includes(lowerQuery)
     );
     setFilteredRows(filtered);
   };
@@ -48,9 +53,15 @@ export default function Sadakah() {
     if (!beneficiary) return toast.error("Select a beneficiary");
     setSaving(true);
     try {
-      await api.post("/sadakah", { beneficiary_id: beneficiary.id, amount: Number(amount), note });
+      await api.post("/sadakah", {
+        beneficiary_id: beneficiary.id,
+        amount: Number(amount),
+        purpose_type: purposeType,
+        purpose_other: purposeOther,
+        note,
+      });
       toast.success("Sadakah recorded");
-      setOpen(false); setBeneficiary(null); setAmount(""); setNote(""); load();
+      setOpen(false); setBeneficiary(null); setAmount(""); setPurposeType("medical"); setPurposeOther(""); setNote(""); load();
     } catch (e) { toast.error(formatDetail(e.response?.data?.detail)); }
     finally { setSaving(false); }
   };
@@ -80,6 +91,21 @@ export default function Sadakah() {
                       <Label>Amount (₹)</Label>
                       <Input type="number" required min="1" value={amount} onChange={e => setAmount(e.target.value)} data-testid="sadakah-amount" />
                     </div>
+                    <div>
+                      <Label>Purpose Type *</Label>
+                      <Select value={purposeType} onValueChange={setPurposeType}>
+                        <SelectTrigger data-testid="sadakah-purpose-type"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="medical">Medical</SelectItem>
+                          <SelectItem value="education">Education</SelectItem>
+                          <SelectItem value="economic">Economic</SelectItem>
+                          <SelectItem value="others">Others</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {purposeType === "others" && (
+                      <div><Label>Purpose Details *</Label><Input required value={purposeOther} onChange={e => setPurposeOther(e.target.value)} data-testid="sadakah-purpose-other" /></div>
+                    )}
                     <div>
                       <Label>Purpose / Note</Label>
                       <Textarea value={note} onChange={e => setNote(e.target.value)} data-testid="sadakah-note" />
@@ -113,19 +139,21 @@ export default function Sadakah() {
             <TableRow className="bg-sidebar">
               <TableHead>Beneficiary</TableHead>
               <TableHead>Amount</TableHead>
+              <TableHead>Purpose</TableHead>
               <TableHead>Note</TableHead>
               <TableHead>Date</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading ? <TableRow><TableCell colSpan={4} className="py-10 text-center text-[color:var(--text-muted)]">Loading…</TableCell></TableRow>
-              : filteredRows.length === 0 ? <TableRow><TableCell colSpan={4} className="py-10 text-center text-[color:var(--text-muted)]" >{searchQuery ? "No matching sadakah." : "No sadakah recorded yet."}</TableCell></TableRow>
+            {loading ? <TableRow><TableCell colSpan={5} className="py-10 text-center text-[color:var(--text-muted)]">Loading…</TableCell></TableRow>
+              : filteredRows.length === 0 ? <TableRow><TableCell colSpan={5} className="py-10 text-center text-[color:var(--text-muted)]" >{searchQuery ? "No matching sadakah." : "No sadakah recorded yet."}</TableCell></TableRow>
               : filteredRows.map(s => (
                 <TableRow key={s.id} data-testid={`sadakah-row-${s.id}`}>
                   <TableCell><div className="font-medium">{s.beneficiary?.name}</div><div className="text-xs text-[color:var(--text-muted)]">{s.beneficiary?.contact}</div></TableCell>
                   <TableCell className="font-semibold text-copper">{inr(s.amount)}</TableCell>
+                  <TableCell className="text-sm">{s.purpose_type === "others" ? `Others: ${s.purpose_other}` : s.purpose_type || "—"}</TableCell>
                   <TableCell className="text-sm">{s.note || "—"}</TableCell>
-                  <TableCell className="text-xs text-[color:var(--text-muted)]">{new Date(s.created_at).toLocaleDateString()}</TableCell>
+                  <TableCell className="text-xs text-[color:var(--text-muted)]">{formatDate(s.created_at)}</TableCell>
                 </TableRow>
               ))}
           </TableBody>

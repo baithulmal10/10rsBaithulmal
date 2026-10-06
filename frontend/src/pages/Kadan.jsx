@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, inr, formatDetail } from "@/lib/api";
+import { api, formatDate, inr, formatDetail } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import PersonLookupForm from "@/components/PersonLookupForm";
 import { Button } from "@/components/ui/button";
@@ -8,17 +8,21 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import StatusBadge from "@/components/StatusBadge";
 import { toast } from "sonner";
 import { Plus, MagnifyingGlass } from "@phosphor-icons/react";
-import { isStaff, useAuth } from "@/context/AuthContext";
+import { canApproveVattiyillaFirstHead, isAccountantAdmin, isStaff, useAuth } from "@/context/AuthContext";
 
 const CATEGORIES = ["Medical", "Education", "Economic"];
+const outstanding = (loan) => Math.max(0, Number(loan.amount || 0) - Number(loan.total_paid || 0));
 
 export default function Kadan({ variant }) {
   const { user } = useAuth();
   const isAdmin = isStaff(user);
+  const canApproveFirstHead = canApproveVattiyillaFirstHead(user);
+  const canApproveAdmin = isAccountantAdmin(user);
   const isVatti = variant === "vattiyilla";
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState([]);
@@ -31,10 +35,12 @@ export default function Kadan({ variant }) {
   const [months, setMonths] = useState(isVatti ? 3 : 6);
   const [area, setArea] = useState("");
   const [notes, setNotes] = useState("");
-  const [security, setSecurity] = useState({ name: "", father_name: "", address: "", contact: "" });
+  const [security, setSecurity] = useState({ name: "", father_name: "", address: "", contact: "", member_id: "" });
+  const [members, setMembers] = useState([]);
   const [saving, setSaving] = useState(false);
   const [detail, setDetail] = useState(null);
   const [repayAmt, setRepayAmt] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const load = () => {
     setLoading(true);
@@ -42,6 +48,11 @@ export default function Kadan({ variant }) {
       .then(r => { setRows(r.data); setFilteredRows(r.data); }).finally(() => setLoading(false));
   };
   useEffect(load, [isVatti]);
+  useEffect(() => {
+    api.get("/ymsk-members")
+      .then(r => setMembers(Array.isArray(r.data) ? r.data : []))
+      .catch(e => toast.error(formatDetail(e.response?.data?.detail)));
+  }, []);
 
   const handleSearch = (query) => {
     setSearchQuery(query);
@@ -62,7 +73,8 @@ export default function Kadan({ variant }) {
   const submit = async (e) => {
     e.preventDefault();
     if (!beneficiary) return toast.error("Select a beneficiary");
-    if (!security.name || !security.contact) return toast.error("Fill security details");
+    if (!/^\d{12}$/.test(String(beneficiary.aadhar_number || "").replace(/\D/g, ""))) return toast.error("Beneficiary must have a valid 12-digit Aadhaar");
+    if (!security.member_id) return toast.error("Select a YMSK security member");
     setSaving(true);
     try {
       await api.post("/loans", {
@@ -73,15 +85,45 @@ export default function Kadan({ variant }) {
       });
       toast.success("Loan created");
       setOpen(false); load();
-      setBeneficiary(null); setAmount(""); setNotes(""); setSecurity({ name: "", father_name: "", address: "", contact: "" });
+      setBeneficiary(null); setAmount(""); setNotes(""); setSecurity({ name: "", father_name: "", address: "", contact: "", member_id: "" });
     } catch (e) { toast.error(formatDetail(e.response?.data?.detail)); }
     finally { setSaving(false); }
   };
 
-  const repay = async () => {
-    if (!repayAmt) return;
+  const approve = async (loan, approved) => {
+    const endpoint = loan.approval_stage === "first_head"
+      ? `/loans/${loan.id}/first-head-approve`
+      : `/loans/${loan.id}/approve`;
     try {
-      const { data } = await api.post(`/loans/${detail.id}/repay`, { amount: Number(repayAmt) });
+      await api.post(endpoint, { approve: approved, note: "" });
+      toast.success(approved ? "Kadan Approved" : "Kadan Rejected");
+      if (detail?.id === loan.id) setDetail(null);
+      load();
+    } catch (e) { toast.error(formatDetail(e.response?.data?.detail)); }
+  };
+
+  const remove = async () => {
+    if (!deleteTarget) return;
+    try {
+      await api.delete(`/loans/${deleteTarget.id}`);
+      toast.success("Kadan Deleted");
+      if (detail?.id === deleteTarget.id) setDetail(null);
+      setDeleteTarget(null);
+      load();
+    } catch (e) { toast.error(formatDetail(e.response?.data?.detail)); }
+  };
+
+  const repay = async () => {
+    const amountToPay = Number(repayAmt);
+    const remaining = outstanding(detail);
+    if (!Number.isFinite(amountToPay) || amountToPay <= 0) {
+      return toast.error("Enter a repayment amount greater than zero");
+    }
+    if (amountToPay > remaining) {
+      return toast.error(`Repayment cannot exceed the outstanding balance of ${inr(remaining)}`);
+    }
+    try {
+      const { data } = await api.post(`/loans/${detail.id}/repay`, { amount: amountToPay });
       setDetail(data);
       setRepayAmt("");
       toast.success("Repayment recorded");
@@ -90,9 +132,9 @@ export default function Kadan({ variant }) {
   };
 
   const extend = async () => {
-    const months = prompt("Extend by how many months?", "3");
+    const months = prompt("EXTEND BY HOW MANY MONTHS?", "3");
     if (!months) return;
-    const note = prompt("Reason / note:", "") || "";
+    const note = prompt("REASON / NOTE:", "") || "";
     try {
       const { data } = await api.post(`/loans/${detail.id}/extend`, { additional_months: Number(months), note });
       setDetail(data); toast.success("Loan extended"); load();
@@ -100,9 +142,9 @@ export default function Kadan({ variant }) {
   };
 
   const block = async () => {
-    const reason = prompt("Reason for block:");
+    const reason = prompt("REASON FOR BLOCK:");
     if (!reason) return;
-    const bm = prompt("Block for how many months?", "6");
+    const bm = prompt("BLOCK FOR HOW MANY MONTHS?", "6");
     if (!bm) return;
     try {
       const { data } = await api.post(`/loans/${detail.id}/block`, { reason, block_months: Number(bm) });
@@ -117,20 +159,25 @@ export default function Kadan({ variant }) {
     } catch (e) { toast.error(formatDetail(e.response?.data?.detail)); }
   };
 
+  const repayAmount = Number(repayAmt);
+  const repayBalance = detail ? outstanding(detail) : 0;
+  const repaymentInvalid = Boolean(repayAmt) && !Number.isFinite(repayAmount);
+  const repaymentExceedsBalance = Boolean(repayAmt) && Number.isFinite(repayAmount) && repayAmount > repayBalance;
+
   return (
     <div data-testid={`kadan-page-${variant}`}>
       <PageHeader
-        title={isVatti ? "Vattiyilla Kadan" : "Kadan (Loan)"}
+        title={isVatti ? "VI" : "Kadan (Loan)"}
         subtitle={isVatti ? "Interest-free short-term loans — typically 3 months, with security details." : "Community loans across Medical, Education & Economic categories with repayment tracking."}
         action={
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button className="btn-accent-copper rounded-full px-5 py-6" data-testid={`add-${variant}-btn`}>
-                <Plus size={16} weight="bold" className="mr-2" /> New {isVatti ? "Vattiyilla Kadan" : "Kadan"}
+                <Plus size={16} weight="bold" className="mr-2" /> New {isVatti ? "VI" : "Kadan"}
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader><DialogTitle className="font-serif text-2xl">New {isVatti ? "Vattiyilla Kadan" : "Kadan"}</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle className="font-serif text-2xl">New {isVatti ? "VI" : "Kadan"}</DialogTitle></DialogHeader>
               <div className="space-y-5">
                 <div>
                   <div className="text-xs uppercase tracking-widest text-copper mb-2">Step 1 · Beneficiary</div>
@@ -167,10 +214,19 @@ export default function Kadan({ variant }) {
                     <div className="card-earth p-5 bg-sidebar">
                       <div className="text-sm font-semibold text-moss mb-3">Security Details</div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <Input placeholder="Security Name" value={security.name} onChange={e => setSecurity({ ...security, name: e.target.value })} data-testid="sec-name" />
-                        <Input placeholder="Father's Name" value={security.father_name} onChange={e => setSecurity({ ...security, father_name: e.target.value })} data-testid="sec-father" />
-                        <Input placeholder="Address" value={security.address} onChange={e => setSecurity({ ...security, address: e.target.value })} data-testid="sec-address" />
-                        <Input placeholder="Contact Number" value={security.contact} onChange={e => setSecurity({ ...security, contact: e.target.value })} data-testid="sec-contact" />
+                        <div className="md:col-span-2">
+                          <Label>YMSK Security Member *</Label>
+                          <Select value={security.member_id} onValueChange={memberId => {
+                            const member = members.find(item => item.id === memberId);
+                            setSecurity(member ? { name: member.name, father_name: member.father_name, address: member.address, contact: member.contact, member_id: member.id } : { name: "", father_name: "", address: "", contact: "", member_id: "" });
+                          }}>
+                            <SelectTrigger data-testid="sec-member"><SelectValue placeholder={members.length ? "Select YMSK Member" : "No YMSK Members Available"} /></SelectTrigger>
+                            <SelectContent>
+                              {members.map(member => <SelectItem key={member.id} value={member.id}>{member.name} · {member.contact}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          {security.member_id && <div className="mt-2 text-sm">{security.name} · {security.father_name} · {security.contact}<br />{security.address}</div>}
+                        </div>
                       </div>
                     </div>
 
@@ -212,24 +268,41 @@ export default function Kadan({ variant }) {
               <TableHead>Category</TableHead>
               <TableHead>Amount</TableHead>
               <TableHead>Paid</TableHead>
-              <TableHead>Due</TableHead>
+              <TableHead>Balance</TableHead>
+              <TableHead>Security</TableHead>
+              <TableHead>Given Date</TableHead>
+              <TableHead>Due Date</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading ? <TableRow><TableCell colSpan={7} className="py-10 text-center text-[color:var(--text-muted)]">Loading…</TableCell></TableRow>
-              : rows.length === 0 ? <TableRow><TableCell colSpan={7} className="py-10 text-center text-[color:var(--text-muted)]">No loans yet.</TableCell></TableRow>
-              : rows.map(l => (
+            {loading ? <TableRow><TableCell colSpan={10} className="py-10 text-center text-[color:var(--text-muted)]">Loading…</TableCell></TableRow>
+              : filteredRows.length === 0 ? <TableRow><TableCell colSpan={10} className="py-10 text-center text-[color:var(--text-muted)]">No loans yet.</TableCell></TableRow>
+              : filteredRows.map(l => (
                 <TableRow key={l.id} data-testid={`loan-row-${l.id}`}>
-                  <TableCell><div className="font-medium">{l.beneficiary?.name}</div><div className="text-xs text-[color:var(--text-muted)]">{l.beneficiary?.contact}</div></TableCell>
+                  <TableCell><div className="font-medium">{l.beneficiary?.name}</div><div className="text-xs text-[color:var(--text-muted)]">{l.beneficiary?.aadhar_number || "—"} · {l.beneficiary?.contact}</div></TableCell>
                   <TableCell>{l.category}</TableCell>
                   <TableCell className="font-semibold">{inr(l.amount)}</TableCell>
                   <TableCell>{inr(l.total_paid)}</TableCell>
-                  <TableCell className="text-xs">{new Date(l.due_date).toLocaleDateString()}</TableCell>
+                  <TableCell className="font-semibold">{inr(outstanding(l))}</TableCell>
+                  <TableCell><div>{l.security?.name}</div><div className="text-xs text-[color:var(--text-muted)]">{l.security?.contact}</div></TableCell>
+                  <TableCell className="text-xs">{formatDate(l.given_date || (l.status === "pending" ? null : l.created_at))}</TableCell>
+                  <TableCell className="text-xs">{formatDate(l.due_date)}</TableCell>
                   <TableCell><StatusBadge status={l.status} /></TableCell>
                   <TableCell className="text-right">
-                    <Button size="sm" variant="outline" className="rounded-full" onClick={() => setDetail(l)} data-testid={`view-loan-${l.id}`}>Manage</Button>
+                    <div className="inline-flex flex-wrap justify-end gap-1">
+                      <Button size="sm" variant="outline" className="rounded-full" onClick={() => setDetail(l)} data-testid={`view-loan-${l.id}`}>{isVatti && ["active", "time_limit_exceed"].includes(l.status) ? "Collect Payment" : "Manage"}</Button>
+                      {l.status === "pending" && l.approval_stage === "first_head" && canApproveFirstHead && <>
+                        <Button size="sm" className="btn-primary-moss rounded-full" onClick={() => approve(l, true)} data-testid={`first-head-approve-${l.id}`}>Approve</Button>
+                        <Button size="sm" variant="outline" onClick={() => approve(l, false)} data-testid={`first-head-reject-${l.id}`}>Reject</Button>
+                      </>}
+                      {l.status === "pending" && l.approval_stage === "admin" && canApproveAdmin && <>
+                        <Button size="sm" className="btn-primary-moss rounded-full" onClick={() => approve(l, true)} data-testid={`admin-approve-${l.id}`}>Approve</Button>
+                        <Button size="sm" variant="outline" onClick={() => approve(l, false)} data-testid={`admin-reject-${l.id}`}>Reject</Button>
+                      </>}
+                      {isAdmin && <Button size="sm" variant="ghost" className="text-red-600" onClick={() => setDeleteTarget(l)} data-testid={`delete-loan-${l.id}`}>Delete</Button>}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -249,12 +322,14 @@ export default function Kadan({ variant }) {
               </DialogHeader>
               <div className="space-y-5">
                 <div className="flex items-center gap-3"><StatusBadge status={detail.status} />
-                  <span className="text-sm text-[color:var(--text-muted)]">Due {new Date(detail.due_date).toLocaleDateString()}</span>
+                  <span className="text-sm text-[color:var(--text-muted)]">Given {formatDate(detail.given_date || (detail.status === "pending" ? null : detail.created_at))} · Due {formatDate(detail.due_date)}</span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div className="card-earth p-4"><div className="text-[10px] uppercase tracking-widest text-[color:var(--text-muted)]">Amount</div><div className="font-serif text-2xl">{inr(detail.amount)}</div></div>
                   <div className="card-earth p-4"><div className="text-[10px] uppercase tracking-widest text-[color:var(--text-muted)]">Paid</div><div className="font-serif text-2xl text-moss">{inr(detail.total_paid)}</div></div>
+                  <div className="card-earth p-4"><div className="text-[10px] uppercase tracking-widest text-[color:var(--text-muted)]">Balance</div><div className="font-serif text-2xl">{inr(outstanding(detail))}</div></div>
+                  <div className="card-earth p-4"><div className="text-[10px] uppercase tracking-widest text-[color:var(--text-muted)]">Beneficiary</div><div className="font-semibold">{detail.beneficiary?.name}</div><div>Aadhaar: {detail.beneficiary?.aadhar_number || "—"}</div><div>Contact: {detail.beneficiary?.contact || "—"}</div><div>{detail.beneficiary?.address}</div></div>
                 </div>
 
                 <div className="card-earth p-4 bg-sidebar text-sm">
@@ -267,7 +342,7 @@ export default function Kadan({ variant }) {
                   <div className="card-earth p-4 border-l-4 border-[#A93F35]">
                     <div className="font-semibold text-[#A93F35]">Blocked — {detail.block_info.reason}</div>
                     <div className="text-sm text-[color:var(--text-secondary)]">
-                      For {detail.block_info.block_months} months · until {new Date(detail.block_info.unblock_at).toLocaleDateString()}
+                      For {detail.block_info.block_months} months · until {formatDate(detail.block_info.unblock_at)}
                     </div>
                   </div>
                 )}
@@ -275,10 +350,13 @@ export default function Kadan({ variant }) {
                 {detail.status !== "blocked" && detail.status !== "closed" && (
                   <div className="card-earth p-4">
                     <div className="text-sm font-semibold mb-3">Record Repayment</div>
+                    <div className="mb-2 text-xs text-[color:var(--text-muted)]">Outstanding balance: {inr(outstanding(detail))}</div>
                     <div className="flex gap-2">
-                      <Input placeholder="Amount" type="number" value={repayAmt} onChange={e => setRepayAmt(e.target.value)} data-testid="repay-amount" />
-                      <Button className="btn-primary-moss rounded-full" onClick={repay} data-testid="repay-btn">Add</Button>
+                      <Input placeholder="Amount" type="number" min="0.01" max={outstanding(detail)} step="0.01" value={repayAmt} onChange={e => setRepayAmt(e.target.value)} data-testid="repay-amount" />
+                      <Button className="btn-primary-moss rounded-full" onClick={repay} disabled={!repayAmt || !Number.isFinite(repayAmount) || repayAmount <= 0 || repaymentExceedsBalance} data-testid="repay-btn">Add</Button>
                     </div>
+                    {repaymentInvalid && <div role="alert" className="mt-2 text-sm text-red-600">Enter a valid repayment amount.</div>}
+                    {repaymentExceedsBalance && <div role="alert" className="mt-2 text-sm text-red-600">Payment cannot exceed the outstanding balance of {inr(repayBalance)}.</div>}
                   </div>
                 )}
 
@@ -288,7 +366,7 @@ export default function Kadan({ variant }) {
                     <ul className="space-y-1">
                       {detail.repayments.map(r => (
                         <li key={r.id} className="flex justify-between text-sm border-b border-earth py-1">
-                          <span>{new Date(r.at).toLocaleDateString()}</span>
+                          <span>{formatDate(r.at)}</span>
                           <span className="font-medium">{inr(r.amount)}</span>
                         </li>
                       ))}
@@ -314,6 +392,18 @@ export default function Kadan({ variant }) {
           )}
         </DialogContent>
       </Dialog>
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete This Kadan?</AlertDialogTitle>
+            <AlertDialogDescription>This Action Cannot Be Undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction onClick={remove}>Yes, Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

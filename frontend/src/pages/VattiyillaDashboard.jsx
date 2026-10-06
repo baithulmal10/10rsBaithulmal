@@ -22,9 +22,9 @@ export default function VattiyillaDashboard() {
       {/* Greeting */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-[color:var(--text-secondary)] text-sm">Vattiyilla Kadan</div>
+          <div className="text-[color:var(--text-secondary)] text-sm">VI</div>
           <div className="mt-1 text-[22px] sm:text-2xl font-bold text-[color:var(--text-primary)] leading-tight">
-            Interest-free Loans · <span className="capitalize text-moss">{user?.role}</span>
+            Interest-free Loans · <span className="text-moss">{user?.role}</span>
           </div>
         </div>
         <div className="w-12 h-12 rounded-full bg-[rgba(21,122,69,0.15)] flex items-center justify-center text-moss">
@@ -72,8 +72,9 @@ export default function VattiyillaDashboard() {
         <h2 className="text-lg sm:text-xl font-bold mt-2 mb-3">Quick Actions</h2>
         <div className="grid grid-cols-2 gap-3.5">
           <QuickAction to="/beneficiaries" icon={Heart} label="Add Beneficiary" testid="v-qa-beneficiary" />
-          <QuickAction to="/vattiyilla" icon={HandCoins} label="New Vattiyilla Kadan" testid="v-qa-newloan" />
-          <QuickAction to="/vattiyilla-accounts" icon={Receipt} label="Vattiyilla Accounts" testid="v-qa-accounts" />
+          <QuickAction to="/vattiyilla-loans" icon={HandCoins} label="New VI" testid="v-qa-newloan" />
+          <QuickAction to="/vattiyilla-loans" icon={Receipt} label="Collect Payment" testid="v-qa-collect-payment" />
+          <QuickAction to="/vattiyilla-accounts" icon={Receipt} label="VI Accounts" testid="v-qa-accounts" />
           <QuickAction to="/reports" icon={Users} label="Reports" testid="v-qa-reports" />
         </div>
       </div>

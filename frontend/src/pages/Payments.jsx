@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { api, inr, formatDetail } from "@/lib/api";
+import { api, formatDate, inr, formatDetail } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import PersonLookupForm from "@/components/PersonLookupForm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import StatusBadge from "@/components/StatusBadge";
 import { toast } from "sonner";
@@ -22,7 +23,6 @@ export default function Payments() {
   const canDelete = isStaff(user);
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState([]);
-  const [filteredRows, setFilteredRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterFrom, setFilterFrom] = useState("");
@@ -38,10 +38,10 @@ export default function Payments() {
   const [showDonors, setShowDonors] = useState(false);
   const [paymentMode, setPaymentMode] = useState("cash");
   const [collectorId, setCollectorId] = useState("");
-  const [collectors, setCollectors] = useState([]);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [receiptPayment, setReceiptPayment] = useState(null);
+  const [paymentToDelete, setPaymentToDelete] = useState(null);
   const receiptRef = useRef(null);
 
   const monthStart = (month) => `${month}-01`;
@@ -54,10 +54,6 @@ export default function Payments() {
     setDonor(selectedDonor);
     setShowDonors(false);
   };
-
-  useEffect(() => {
-    api.get("/payments/collectors", { params: { status: "pending" } }).then(r => setCollectors(Array.isArray(r.data) ? r.data : [])).catch(() => {});
-  }, []);
 
   useEffect(() => {
     if (!receiptPayment || !receiptRef.current) return undefined;
@@ -84,7 +80,9 @@ export default function Payments() {
     const from = p.date_from || p.collection_date || "";
     const to = p.date_to || from;
     if (!from && !to) return "—";
-    return from === to ? from : `${from} → ${to}`;
+    const formattedFrom = formatDate(from);
+    const formattedTo = formatDate(to);
+    return from === to ? formattedFrom : `${formattedFrom} → ${formattedTo}`;
   }, []);
 
   const isPendingStatus = (status) => {
@@ -92,14 +90,18 @@ export default function Payments() {
     return value === "pending" || value === "in_review" || value === "in review" || value === "review";
   };
 
-  const applySearch = useCallback((records, query) => {
-    if (!query.trim()) return records;
+  const applySearch = useCallback((records, query, selectedCollector) => {
+    const collectorFiltered = selectedCollector
+      ? records.filter(payment => (payment.collected_by || payment.collected_by_name) === selectedCollector)
+      : records;
+    if (!query.trim()) return collectorFiltered;
     const lowerQuery = query.toLowerCase();
-    return records.filter(p =>
+    return collectorFiltered.filter(p =>
       p.receipt_no?.toLowerCase().includes(lowerQuery) ||
       p.donor?.name?.toLowerCase().includes(lowerQuery) ||
       p.donor?.contact?.includes(query) ||
       p.collected_by_name?.toLowerCase().includes(lowerQuery) ||
+      p.collected_by?.toLowerCase().includes(lowerQuery) ||
       p.status?.toLowerCase().includes(lowerQuery) ||
       (p.date_from || p.date_to || p.collection_date || "").toLowerCase().includes(lowerQuery) ||
       formatDateRange(p).toLowerCase().includes(lowerQuery)
@@ -107,28 +109,48 @@ export default function Payments() {
   }, [formatDateRange]);
 
   const load = useCallback(async (showLoader = false) => {
-    if (showLoader || rows.length === 0) setLoading(true);
+    if (showLoader) setLoading(true);
     const params = {};
     if (filterFrom) params.date_from = filterFrom;
     if (filterTo) params.date_to = filterTo;
-    if (collectorId) params.collector_id = collectorId;
     params.status = "pending";
+    params.limit = 2000;
     try {
       const r = await api.get("/payments", { params });
       const nextRows = Array.isArray(r.data) ? r.data : [];
       setRows(nextRows);
-      setFilteredRows(applySearch(nextRows, searchQuery));
     } finally {
       setLoading(false);
     }
-  }, [applySearch, collectorId, filterFrom, filterTo, rows.length, searchQuery]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load(true); }, [filterFrom, filterTo, collectorId]);
+  }, [filterFrom, filterTo]);
+  useEffect(() => { load(true); }, [load]);
 
   const handleSearch = (query) => {
     setSearchQuery(query);
-    setFilteredRows(applySearch(rows, query));
   };
+
+  const collectors = useMemo(() => {
+    const grouped = new Map();
+    rows.forEach(payment => {
+      const id = payment.collected_by || payment.collected_by_name;
+      if (!id) return;
+      const summary = grouped.get(id) || {
+        id,
+        name: payment.collected_by_name || payment.collected_by,
+        total: 0,
+        count: 0,
+      };
+      summary.total += Number(payment.total_amount || 0);
+      summary.count += 1;
+      grouped.set(id, summary);
+    });
+    return Array.from(grouped.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [rows]);
+
+  const filteredRows = useMemo(
+    () => applySearch(rows, searchQuery, collectorId),
+    [applySearch, rows, searchQuery, collectorId]
+  );
 
   const submit = async (e) => {
     e.preventDefault();
@@ -172,6 +194,15 @@ export default function Payments() {
     setReceiptPayment(p);
   };
 
+  const remove = async (payment) => {
+    try {
+      await api.delete(`/payments/${payment.id}`);
+      toast.success("Payment Deleted");
+      setPaymentToDelete(null);
+      load();
+    } catch (e) { toast.error(formatDetail(e.response?.data?.detail)); }
+  };
+
   const whatsappShare = (p) => {
     const msg = `10Rs Baithulmal Receipt #${p.receipt_no}\nDonor: ${p.donor.name}\nDate: ${formatDateRange(p)}\nTotal: ${inr(p.total_amount)}\n*ஜஸாகல்லாஹ் ஹைரன்* 
 
@@ -182,7 +213,7 @@ export default function Payments() {
  ஜென்னத்துல் பிரதௌஸ் என்னும் உயரிய சொர்க்கத்தை உங்களுக்கும், உங்களுடைய மனைவி, பிள்ளைகள், உங்களுடைய உறவினர்கள், சந்ததியினர் மற்றும் முன்னோர்கள் அனைவருக்கும் தந்தருள்வானாக...
 
  *ஆமீன்*`;
-    shareWhatsApp(msg);
+    shareWhatsApp(msg.toLocaleUpperCase());
   };
 
   return (
@@ -279,22 +310,22 @@ export default function Payments() {
           <div className="flex flex-col gap-2 sm:flex-row">
             <div>
               <Label className="text-xs">From</Label>
-              <Input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)} data-testid="filter-date-from" />
+              <Input type="date" value={filterFrom} onChange={e => { setFilterFrom(e.target.value); setCollectorId(""); }} data-testid="filter-date-from" />
             </div>
             <div>
               <Label className="text-xs">To</Label>
-              <Input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)} data-testid="filter-date-to" />
+              <Input type="date" value={filterTo} onChange={e => { setFilterTo(e.target.value); setCollectorId(""); }} data-testid="filter-date-to" />
             </div>
             {(filterFrom || filterTo) && (
-              <Button type="button" variant="outline" className="mt-5 rounded-full" onClick={() => { setFilterFrom(""); setFilterTo(""); }}>Clear dates</Button>
+              <Button type="button" variant="outline" className="mt-5 rounded-full" onClick={() => { setFilterFrom(""); setFilterTo(""); setCollectorId(""); }}>Clear dates</Button>
             )}
           </div>
           {searchQuery && <span className="text-xs text-[color:var(--text-muted)]">Found: {filteredRows.length}</span>}
           <div className="flex items-center gap-2 text-sm">
-            <Label className="whitespace-nowrap">Collected by</Label>
+            <Label className="whitespace-nowrap">Collected By</Label>
             <select value={collectorId} onChange={e => setCollectorId(e.target.value)} className="h-10 px-3 bg-white border rounded-md border-earth" data-testid="payment-user-filter">
-              <option value="">All users</option>
-              {collectors.map(c => <option key={c.id} value={c.id}>{c.name} · {inr(c.total)}</option>)}
+              <option value="">All Collectors</option>
+              {collectors.map(c => <option key={c.id} value={c.id}>{c.name} · {c.count} · {inr(c.total)}</option>)}
             </select>
           </div>
         </div>
@@ -310,7 +341,7 @@ export default function Payments() {
               <TableHead>To Month</TableHead>
               <TableHead>Total</TableHead>
               <TableHead>Mode</TableHead>
-              <TableHead>Payment Added By</TableHead>
+              <TableHead>Collected By</TableHead>
               <TableHead>Collected Date</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -327,8 +358,8 @@ export default function Payments() {
                   <TableCell className="text-sm">{p.to_month || (p.date_to || p.date_from || p.collection_date || "—").slice(0, 7)}</TableCell>
                   <TableCell className="font-semibold">{inr(p.total_amount)}</TableCell>
                   <TableCell className="text-xs uppercase">{p.payment_mode === "online" ? "ONLINE PAYMENT" : "CASH"}</TableCell>
-                  <TableCell className="text-sm">{p.added_by_name || p.collected_by_name || "—"}</TableCell>
-                  <TableCell className="text-sm">{p.collected_date || p.collection_date || "—"}</TableCell>
+                  <TableCell className="text-sm">{p.collected_by_name || p.collected_by || "—"}</TableCell>
+                  <TableCell className="text-sm">{formatDate(p.collected_date || p.collection_date)}</TableCell>
                   <TableCell><StatusBadge status={p.status} /></TableCell>
                   <TableCell className="text-right">
                     <div className="inline-flex gap-1">
@@ -340,9 +371,7 @@ export default function Payments() {
                           <Button size="sm" variant="outline" onClick={() => approve(p.id, false)} data-testid={`reject-${p.id}`}>Reject</Button>
                         </>
                       )}
-                      {canDelete && (
-                        <Button size="sm" variant="ghost" className="text-red-600" onClick={() => api.delete(`/payments/${p.id}`).then(() => load()).catch(e => toast.error(formatDetail(e.response?.data?.detail)))} data-testid={`delete-payment-${p.id}`}>Delete</Button>
-                      )}
+                      {canDelete && <Button size="sm" variant="ghost" className="text-red-600" onClick={() => setPaymentToDelete(p)} data-testid={`delete-payment-${p.id}`}>Delete</Button>}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -355,12 +384,24 @@ export default function Payments() {
           <ReceiptTemplate
             receiptNo={receiptPayment.receipt_no}
             donor={receiptPayment.donor?.name}
-            paymentDate={receiptPayment.collected_date || receiptPayment.collection_date}
+            paymentDate={formatDate(receiptPayment.collected_date || receiptPayment.collection_date)}
             forMonth={`${receiptPayment.from_month || (receiptPayment.date_from || "").slice(0, 7)} to ${receiptPayment.to_month || (receiptPayment.date_to || "").slice(0, 7)}`}
             amount={Number(receiptPayment.total_amount || 0).toLocaleString("en-IN")}
           />
         </div>
       )}
+      <AlertDialog open={!!paymentToDelete} onOpenChange={open => !open && setPaymentToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete This Payment?</AlertDialogTitle>
+            <AlertDialogDescription>This Action Cannot Be Undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction onClick={() => paymentToDelete && remove(paymentToDelete)}>Yes, Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, inr, formatDetail } from "@/lib/api";
+import { api, formatDate, inr, formatDetail } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,37 +44,37 @@ export default function Reports() {
         sections: [{
           heading: "Payments",
           columns: ["Receipt", "Collection Date", "Amount"],
-          rows: data.payments.map(p => [p.receipt_no, p.collection_date || "—", inr(p.total_amount)]),
+          rows: data.payments.map(p => [p.receipt_no, formatDate(p.collection_date), inr(p.total_amount)]),
           total: data.total,
         }],
       });
     }
     return generatePdf({
       title: `${range.charAt(0).toUpperCase() + range.slice(1)} Report`,
-      subtitle: `${new Date(data.start).toLocaleDateString()} → ${new Date(data.end).toLocaleDateString()}`,
+      subtitle: `${formatDate(data.start)} → ${formatDate(data.end)}`,
       sections: [
         {
           heading: "Payments (Approved)",
           columns: ["Date", "Receipt", "Donor", "Total"],
-          rows: data.payments.map(p => [new Date(p.created_at).toLocaleDateString(), p.receipt_no, p.donor?.name || "", inr(p.total_amount)]),
+          rows: data.payments.map(p => [formatDate(p.created_at), p.receipt_no, p.donor?.name || "", inr(p.total_amount)]),
           total: data.totals.income,
         },
         {
           heading: "Expenses",
           columns: ["Date", "Kind", "Detail", "Amount"],
-          rows: data.expenses.map(e => [new Date(e.created_at).toLocaleDateString(), e.kind, e.kind === "salary" ? e.worker?.name || "" : e.category, inr(e.amount)]),
+          rows: data.expenses.map(e => [formatDate(e.created_at), e.kind, e.kind === "salary" ? e.worker?.name || "" : e.category, inr(e.amount)]),
           total: data.totals.expense,
         },
         {
           heading: "Sadakah",
           columns: ["Date", "Beneficiary", "Amount"],
-          rows: data.sadakah.map(s => [new Date(s.created_at).toLocaleDateString(), s.beneficiary?.name || "", inr(s.amount)]),
+          rows: data.sadakah.map(s => [formatDate(s.created_at), s.beneficiary?.name || "", inr(s.amount)]),
           total: data.totals.sadakah,
         },
         {
           heading: "Loans Issued",
           columns: ["Date", "Beneficiary", "Category", "Amount"],
-          rows: data.loans.map(l => [new Date(l.created_at).toLocaleDateString(), l.beneficiary?.name || "", l.category, inr(l.amount)]),
+          rows: data.loans.map(l => [formatDate(l.created_at), l.beneficiary?.name || "", l.category, inr(l.amount)]),
         },
       ],
     });
@@ -84,10 +84,10 @@ export default function Reports() {
   const doWhatsapp = () => {
     if (!data) return;
     if (range === "individual") {
-      shareWhatsApp(`Donor Report: ${data.donor?.name}\nTotal contributed: ${inr(data.total)}`);
+      shareWhatsApp(`Donor Report: ${data.donor?.name}\nTotal contributed: ${inr(data.total)}`.toLocaleUpperCase());
     } else {
       const t = data.totals;
-      shareWhatsApp(`10Rs Baithulmal — ${range} report\nIncome: ${inr(t.income)}\nExpenses: ${inr(t.expense)}\nSadakah: ${inr(t.sadakah)}\nNet: ${inr(t.net)}`);
+      shareWhatsApp(`10Rs Baithulmal — ${range} report\nIncome: ${inr(t.income)}\nExpenses: ${inr(t.expense)}\nSadakah: ${inr(t.sadakah)}\nNet: ${inr(t.net)}`.toLocaleUpperCase());
     }
   };
 
@@ -145,7 +145,7 @@ export default function Reports() {
               <h2 className="font-serif text-3xl font-semibold">
                 {range === "individual" ? `Report · ${data.donor?.name || ""}` : `${range.charAt(0).toUpperCase() + range.slice(1)} Report`}
               </h2>
-              {range !== "individual" && <div className="text-sm text-[color:var(--text-secondary)]">{new Date(data.start).toLocaleDateString()} → {new Date(data.end).toLocaleDateString()}</div>}
+              {range !== "individual" && <div className="text-sm text-[color:var(--text-secondary)]">{formatDate(data.start)} → {formatDate(data.end)}</div>}
             </div>
             <div className="flex gap-2">
               <Button onClick={doDownload} className="btn-accent-copper rounded-full" data-testid="report-pdf"><FilePdf size={14} weight="duotone" className="mr-2" /> PDF</Button>
@@ -167,7 +167,7 @@ export default function Reports() {
                   {data.payments.map(p => (
                     <TableRow key={p.id}>
                       <TableCell className="font-mono text-xs text-copper">{p.receipt_no}</TableCell>
-                      <TableCell>{p.collection_date || "—"}</TableCell>
+                      <TableCell>{formatDate(p.collection_date)}</TableCell>
                       <TableCell className="font-semibold">{inr(p.total_amount)}</TableCell>
                     </TableRow>
                   ))}

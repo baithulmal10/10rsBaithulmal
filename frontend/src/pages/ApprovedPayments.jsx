@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, inr } from "@/lib/api";
+import { api, formatDate, inr } from "@/lib/api";
+import { shareWhatsApp } from "@/lib/pdf";
 import PageHeader from "@/components/PageHeader";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -12,8 +13,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { WhatsappLogo } from "@phosphor-icons/react";
 
-const formatDate = (date) => date.toISOString().slice(0, 10);
+const formatISODate = (date) => date.toISOString().slice(0, 10);
 
 function rangeFor(value) {
   const end = new Date();
@@ -32,8 +34,8 @@ function rangeFor(value) {
   }
 
   return {
-    date_from: formatDate(start),
-    date_to: formatDate(end),
+    date_from: formatISODate(start),
+    date_to: formatISODate(end),
   };
 }
 
@@ -142,6 +144,28 @@ export default function ApprovedPayments() {
       0
     );
   }, [filteredRows]);
+
+  const sendReceipt = (payment) => {
+    const donor = payment.donor || {};
+    const periodStart = payment.from_month || payment.date_from?.slice(0, 7);
+    const periodEnd = payment.to_month || payment.date_to?.slice(0, 7);
+    const donorId = donor.serial || donor.id || payment.donor_id;
+    const message = [
+      "10RS BAITHULMAL",
+      payment.receipt_no && `RECEIPT NUMBER: ${payment.receipt_no}`,
+      donor.name && `DONOR: ${donor.name}`,
+      donorId && `DONOR ID: ${donorId}`,
+      donor.contact && `CONTACT: ${donor.contact}`,
+      `AMOUNT: ${inr(payment.total_amount || 0)}`,
+      (payment.collected_date || payment.collection_date) && `PAYMENT DATE: ${formatDate(payment.collected_date || payment.collection_date)}`,
+      payment.payment_mode && `PAYMENT METHOD: ${payment.payment_mode.toUpperCase()}`,
+      periodStart && `FROM MONTH: ${periodStart}`,
+      periodEnd && `TO MONTH: ${periodEnd}`,
+      payment.collected_by_name && `COLLECTED BY: ${payment.collected_by_name}`,
+      payment.note && `NOTE: ${payment.note}`,
+    ].filter(Boolean).join("\n");
+    shareWhatsApp(message);
+  };
 
   return (
     <div data-testid="approved-payments-page">
@@ -261,6 +285,7 @@ export default function ApprovedPayments() {
               <TableHead>Collected date</TableHead>
               <TableHead>From month</TableHead>
               <TableHead>To month</TableHead>
+              <TableHead>Action</TableHead>
             </TableRow>
           </TableHeader>
 
@@ -268,7 +293,7 @@ export default function ApprovedPayments() {
             {loading ? (
               <TableRow>
                 <TableCell
-                  colSpan={8}
+                  colSpan={9}
                   className="py-10 text-center"
                 >
                   Loading...
@@ -277,7 +302,7 @@ export default function ApprovedPayments() {
             ) : filteredRows.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={8}
+                  colSpan={9}
                   className="py-10 text-center"
                 >
                   No approved payments for this period.
@@ -326,11 +351,7 @@ export default function ApprovedPayments() {
                   </TableCell>
 
                   {/* Collected Date */}
-                  <TableCell>
-                    {row.collected_date ||
-                      row.collection_date ||
-                      "—"}
-                  </TableCell>
+                  <TableCell>{formatDate(row.collected_date || row.collection_date)}</TableCell>
 
                   {/* From Month */}
                   <TableCell>
@@ -340,6 +361,12 @@ export default function ApprovedPayments() {
                   {/* To Month */}
                   <TableCell>
                     {row.to_month || "—"}
+                  </TableCell>
+                  <TableCell>
+                    <Button type="button" size="sm" variant="outline" className="rounded-full"
+                      onClick={() => sendReceipt(row)} data-testid={`approved-receipt-${row.id}`}>
+                      <WhatsappLogo size={14} weight="duotone" className="mr-2" /> 
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))

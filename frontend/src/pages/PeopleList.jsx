@@ -53,7 +53,7 @@ export default function PeopleList({ kind, title, subtitle }) {
   };
 
   const remove = async (id) => {
-    if (!window.confirm("Delete this record?")) return;
+    if (!window.confirm("DELETE THIS RECORD?")) return;
     try {
       await api.delete(`/people/${kind}/${id}`);
       toast.success("Deleted");
@@ -97,7 +97,7 @@ export default function PeopleList({ kind, title, subtitle }) {
         <div className="flex gap-2 items-center">
           <MagnifyingGlass size={18} className="text-[color:var(--text-muted)]" />
           <Input
-            placeholder={`Search by name, contact, reference, ID...`}
+            placeholder={`Search by name, contact, Aadhaar, reference, ID...`}
             value={searchQuery}
             onChange={e => handleSearch(e.target.value)}
             data-testid="search-bar"
@@ -116,7 +116,7 @@ export default function PeopleList({ kind, title, subtitle }) {
               <TableHead>Father&apos;s Name</TableHead>
               <TableHead>Contact</TableHead>
               <TableHead>Reference</TableHead>
-              <TableHead>Aadhar</TableHead>
+              <TableHead>Aadhaar</TableHead>
               <TableHead>Address</TableHead>
               <TableHead>Area</TableHead>
               {(isAccountantAdmin(user) || (kind === "donors" && isStaff(user))) && <TableHead className="text-right">Actions</TableHead>}
@@ -153,7 +153,7 @@ export default function PeopleList({ kind, title, subtitle }) {
         <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle className="font-serif text-2xl">Edit Donor</DialogTitle></DialogHeader>
           {editForm && <form onSubmit={saveEdit} className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {[["name", "Name"], ["father_name", "Father's Name"], ["contact", "Contact"], ["address", "Address"], ["area", "Area"], ["reference", "Reference"], ["aadhar_number", "Aadhar"]].map(([key, label]) => <div key={key} className={key === "address" ? "md:col-span-2" : ""}><Label>{label}</Label><Input value={editForm[key] || ""} onChange={e => setEditForm({ ...editForm, [key]: e.target.value })} required={key === "name" || key === "father_name" || key === "contact" || key === "address"} /></div>)}
+            {[["name", "Name"], ["father_name", "Father's Name"], ["contact", "Contact"], ["address", "Address"], ["area", "Area"], ["reference", "Reference"], ["aadhar_number", "Aadhaar"]].map(([key, label]) => <div key={key} className={key === "address" ? "md:col-span-2" : ""}><Label>{label}</Label><Input value={editForm[key] || ""} onChange={e => setEditForm({ ...editForm, [key]: e.target.value })} required={key === "name" || key === "father_name" || key === "contact" || key === "address" || (kind === "beneficiaries" && key === "aadhar_number")} /></div>)}
             <Button disabled={editSaving} className="rounded-full btn-primary-moss md:col-span-2">{editSaving ? "Saving…" : "Save Changes"}</Button>
           </form>}
         </DialogContent>
