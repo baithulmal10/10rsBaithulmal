@@ -67,7 +67,7 @@ export default function Dashboard() {
             <div className="mt-1.5 text-xl font-semibold">{inr(s?.loan_outstanding || s?.total_loan_outstanding || 0)}</div>
           </div>
           <div className="pl-4">
-            <div className="text-sm text-white/85">Kadan (Loan)</div>
+            <div className="text-sm text-white/85">VI Kadan (Loan)</div>
             <div className="mt-1.5 text-xl font-semibold">{inr(s?.loan_outstanding || s?.total_loan_outstanding || 0)}</div>
           </div>
         </div>
