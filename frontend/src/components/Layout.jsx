@@ -16,7 +16,7 @@ const nav = [
   { to: "/beneficiaries", icon: UsersThree, label: "Beneficiaries", testid: "nav-beneficiaries", group: "Baithulmal" },
   { to: "/payments", icon: Coins, label: "Payments", testid: "nav-payments", group: "Baithulmal" },
   { to: "/payments/approved", icon: Coins, label: "Approved Payments", testid: "nav-approved-payments", group: "Baithulmal" },
-  { to: "/kadan", icon: HandCoins, label: "Kadan (Loan)", testid: "nav-kadan", group: "Baithulmal" },
+  { to: "/kadan", icon: HandCoins, label: "VI Kadan (Loan)", testid: "nav-kadan", group: "Baithulmal" },
   { to: "/sadakah", icon: HandHeart, label: "Sadakah", testid: "nav-sadakah", group: "Baithulmal" },
   { to: "/accounts", icon: Bank, label: "Accounts", testid: "nav-accounts", group: "Baithulmal" },
   { to: "/reports/10rs", icon: ChartBar, label: "10Rs Baithulmal Report", testid: "nav-10rs-report", group: "Baithulmal" },

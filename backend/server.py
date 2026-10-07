@@ -911,6 +911,14 @@ async def create_sadakah(data: SadakahIn, user: dict = Depends(require_staff)):
     return doc
 
 
+@api.delete("/sadakah/{sid}")
+async def delete_sadakah(sid: str, user: dict = Depends(require_staff)):
+    result = await db.sadakah.delete_one({"id": sid})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Sadakah not found")
+    return {"ok": True}
+
+
 # ---------------- Payments (donor collection by date) ----------------
 def _parse_ymd(value: str, field: str = "collection_date") -> str:
     try:

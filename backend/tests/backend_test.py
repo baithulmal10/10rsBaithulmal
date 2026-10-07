@@ -307,6 +307,18 @@ class TestSadakah:
         assert r.status_code == 200
         assert isinstance(r.json(), list)
 
+    def test_delete(self, admin_client, created_people):
+        created = admin_client.post(f"{API}/sadakah", json={
+            "beneficiary_id": created_people["beneficiaries"]["id"], "amount": 250, "purpose_type": "medical"
+        })
+        assert created.status_code == 200, created.text
+        sadakah_id = created.json()["id"]
+
+        deleted = admin_client.delete(f"{API}/sadakah/{sadakah_id}")
+        assert deleted.status_code == 200, deleted.text
+        assert deleted.json() == {"ok": True}
+        assert admin_client.delete(f"{API}/sadakah/{sadakah_id}").status_code == 404
+
 
 # --- payments --------------------------------------------------------------
 
@@ -547,6 +559,7 @@ class TestRBAC:
         assert collector_client.get(f"{API}/payments/pending").status_code == 403
         # user-outstanding covered in accounts tests
         assert collector_client.get(f"{API}/sadakah").status_code == 403
+        assert collector_client.delete(f"{API}/sadakah/{uuid.uuid4()}").status_code == 403
         assert collector_client.get(f"{API}/expenses").status_code == 403
         assert collector_client.get(f"{API}/people/beneficiaries").status_code == 403
         assert collector_client.post(f"{API}/people/donors", json={

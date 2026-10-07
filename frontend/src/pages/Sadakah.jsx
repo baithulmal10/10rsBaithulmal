@@ -8,11 +8,15 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { Plus, MagnifyingGlass } from "@phosphor-icons/react";
+import { isStaff, useAuth } from "@/context/AuthContext";
 
 export default function Sadakah() {
+  const { user } = useAuth();
+  const canDelete = isStaff(user);
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState([]);
   const [filteredRows, setFilteredRows] = useState([]);
@@ -24,6 +28,7 @@ export default function Sadakah() {
   const [purposeOther, setPurposeOther] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const load = () => {
     setLoading(true);
@@ -64,6 +69,17 @@ export default function Sadakah() {
       setOpen(false); setBeneficiary(null); setAmount(""); setPurposeType("medical"); setPurposeOther(""); setNote(""); load();
     } catch (e) { toast.error(formatDetail(e.response?.data?.detail)); }
     finally { setSaving(false); }
+  };
+
+  const remove = async () => {
+    if (!deleteTarget) return;
+    try {
+      await api.delete(`/sadakah/${deleteTarget.id}`);
+      toast.success("Sadakah deleted");
+      setRows(current => current.filter(s => s.id !== deleteTarget.id));
+      setFilteredRows(current => current.filter(s => s.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (e) { toast.error(formatDetail(e.response?.data?.detail)); }
   };
 
   return (
@@ -142,11 +158,12 @@ export default function Sadakah() {
               <TableHead>Purpose</TableHead>
               <TableHead>Note</TableHead>
               <TableHead>Date</TableHead>
+              {canDelete && <TableHead className="text-right">Action</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading ? <TableRow><TableCell colSpan={5} className="py-10 text-center text-[color:var(--text-muted)]">Loading…</TableCell></TableRow>
-              : filteredRows.length === 0 ? <TableRow><TableCell colSpan={5} className="py-10 text-center text-[color:var(--text-muted)]" >{searchQuery ? "No matching sadakah." : "No sadakah recorded yet."}</TableCell></TableRow>
+            {loading ? <TableRow><TableCell colSpan={canDelete ? 6 : 5} className="py-10 text-center text-[color:var(--text-muted)]">Loading…</TableCell></TableRow>
+              : filteredRows.length === 0 ? <TableRow><TableCell colSpan={canDelete ? 6 : 5} className="py-10 text-center text-[color:var(--text-muted)]" >{searchQuery ? "No matching sadakah." : "No sadakah recorded yet."}</TableCell></TableRow>
               : filteredRows.map(s => (
                 <TableRow key={s.id} data-testid={`sadakah-row-${s.id}`}>
                   <TableCell><div className="font-medium">{s.beneficiary?.name}</div><div className="text-xs text-[color:var(--text-muted)]">{s.beneficiary?.contact}</div></TableCell>
@@ -154,11 +171,24 @@ export default function Sadakah() {
                   <TableCell className="text-sm">{s.purpose_type === "others" ? `Others: ${s.purpose_other}` : s.purpose_type || "—"}</TableCell>
                   <TableCell className="text-sm">{s.note || "—"}</TableCell>
                   <TableCell className="text-xs text-[color:var(--text-muted)]">{formatDate(s.created_at)}</TableCell>
+                  {canDelete && <TableCell className="text-right"><Button size="sm" variant="ghost" className="text-red-600" onClick={() => setDeleteTarget(s)} data-testid={`delete-sadakah-${s.id}`}>Delete</Button></TableCell>}
                 </TableRow>
               ))}
           </TableBody>
         </Table>
       </div>
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete This Sadakah?</AlertDialogTitle>
+            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction onClick={remove}>Yes, Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
