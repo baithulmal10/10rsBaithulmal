@@ -57,6 +57,17 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/a
 
 This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
 
+### Installable app
+
+The deployed site is an installable Progressive Web App (PWA). On Android, open
+the site in Chrome and choose **Install app** or **Add to Home screen** from the
+browser menu. On iPhone or iPad, open it in Safari, tap **Share**, then choose
+**Add to Home Screen**.
+
+The app requires an internet connection to access account data. Only static
+app resources and the offline notice are cached; API responses and financial
+data are not stored for offline use.
+
 ### Advanced Configuration
 
 This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
